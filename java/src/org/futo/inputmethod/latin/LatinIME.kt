@@ -1,829 +1,958 @@
-package org.futo.inputmethod.v2keyboard
+package org.futo.inputmethod.latin
 
+import android.content.BroadcastReceiver
 import android.content.Context
-import android.graphics.Rect
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.res.Configuration
+import android.graphics.Color
+import android.inputmethodservice.InputMethodService
+import android.os.Build
+import android.os.Bundle
 import android.util.Log
-import androidx.compose.ui.unit.Dp
-import org.futo.inputmethod.keyboard.KeyConsts
-import org.futo.inputmethod.keyboard.internal.KeyboardLayoutElement
-import org.futo.inputmethod.keyboard.internal.KeyboardParams
-import org.futo.inputmethod.latin.R
+import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.CompletionInfo
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InlineSuggestionsRequest
+import android.view.inputmethod.InlineSuggestionsResponse
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodSubtype
+import androidx.annotation.RequiresApi
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.futo.inputmethod.accessibility.AccessibilityUtils
+import org.futo.inputmethod.engine.ExpandableSuggestionBarConfiguration
+import org.futo.inputmethod.engine.IMEManager
+import org.futo.inputmethod.engine.general.WordLearner
+import org.futo.inputmethod.latin.SuggestedWords.SuggestedWordInfo
 import org.futo.inputmethod.latin.common.Constants
 import org.futo.inputmethod.latin.settings.Settings
+import org.futo.inputmethod.latin.uix.BasicThemeProvider
+import org.futo.inputmethod.latin.uix.DataStoreHelper
 import org.futo.inputmethod.latin.uix.DynamicThemeProvider
-import org.futo.inputmethod.latin.uix.actions.throwIfDebug
-import kotlin.math.floor
+import org.futo.inputmethod.latin.uix.DynamicThemeProviderOwner
+import org.futo.inputmethod.latin.uix.EmojiTracker.useEmoji
+import org.futo.inputmethod.latin.uix.HiddenKeysSetting
+import org.futo.inputmethod.latin.uix.KeyBordersSetting
+import org.futo.inputmethod.latin.uix.KeyHintsSetting
+import org.futo.inputmethod.latin.uix.KeyboardColorScheme
+import org.futo.inputmethod.latin.uix.SUGGESTION_BLACKLIST
+import org.futo.inputmethod.latin.uix.SettingsKey
+import org.futo.inputmethod.latin.uix.THEME_KEY
+import org.futo.inputmethod.latin.uix.UixManager
+import org.futo.inputmethod.latin.uix.actions.CanThrowIfDebug
+import org.futo.inputmethod.latin.uix.createInlineSuggestionsRequest
+import org.futo.inputmethod.latin.uix.dataStore
+import org.futo.inputmethod.latin.uix.differsFrom
+import org.futo.inputmethod.latin.uix.forceUnlockDatastore
+import org.futo.inputmethod.latin.uix.getSetting
+import org.futo.inputmethod.latin.uix.getSettingBlocking
+import org.futo.inputmethod.latin.uix.getSettingFlow
+import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
+import org.futo.inputmethod.latin.uix.safeKeyboardPadding
+import org.futo.inputmethod.latin.uix.setSetting
+import org.futo.inputmethod.latin.uix.theme.ThemeOption
+import org.futo.inputmethod.latin.uix.theme.applyWindowColors
+import org.futo.inputmethod.latin.uix.theme.getThemeOption
+import org.futo.inputmethod.latin.uix.theme.orDefault
+import org.futo.inputmethod.latin.uix.theme.presets.DefaultDarkScheme
+import org.futo.inputmethod.latin.utils.JniUtils
+import org.futo.inputmethod.updates.scheduleUpdateCheckingJob
+import org.futo.inputmethod.v2keyboard.ComputedKeyboardSize
+import org.futo.inputmethod.v2keyboard.FloatingKeyboardSize
+import org.futo.inputmethod.v2keyboard.KeyboardSettings
+import org.futo.inputmethod.v2keyboard.KeyboardSizeSettingKind
+import org.futo.inputmethod.v2keyboard.KeyboardSizeStateProvider
+import org.futo.inputmethod.v2keyboard.KeyboardSizingCalculator
+import org.futo.inputmethod.v2keyboard.LayoutManager
+import org.futo.inputmethod.v2keyboard.dimensionsSameAs
+import org.futo.inputmethod.v2keyboard.getPrimaryLayoutOverride
+import org.futo.inputmethod.v2keyboard.isFoldableInnerDisplayAllowed
 import kotlin.math.roundToInt
 
-val EPS = 1e-5.toFloat()
+/** Whether or not we can render into the navbar */
+val SupportsNavbarExtension = Build.VERSION.SDK_INT >= 28
 
-// Entries are either a key, or a gap.
-// Gaps are added if the row is mostly regular-width keys and there are fewer keys in this row
-// e.g.
-// q w e r t y u i o p
-// _a s d f g h j k l_
-// ___z x c v b n m___
-// ^^^ gap     gap ^^^
-sealed class LayoutEntry(val widthPx: Float) {
-    class Key(val data: ComputedKeyData, widthPx: Float, val rowSpan: Int = 1, val heightOverride: Float? = null) : LayoutEntry(widthPx)
-    class Gap(widthPx: Float): LayoutEntry(widthPx)
-}
+val SupportsNonComposing = Build.VERSION.SDK_INT >= 31
 
-// Split a row into two, for split keyboard layouts.
-// If there is an even number of entries, it will be split in the middle
-// If there is an odd number, the middle entry will be duplicated
-fun List<LayoutEntry>.splitRow(): Pair<List<LayoutEntry>, List<LayoutEntry>> {
-    val row0 = subList(0, (size / 2.0f).roundToInt() )
-    val row1 = subList(floor(size / 2.0f).roundToInt(), size)
+val UseTransparentNavbar =
+    // https://github.com/futo-org/android-keyboard/issues/772
+    !Build.MANUFACTURER.lowercase().contains("motorola")
 
-    return Pair(row0, row1)
-}
+val HideKeyboardWhenHardKeyboardConnected = SettingsKey(
+    booleanPreferencesKey("hideKeyboardWhenHardKeyboardConnected"),
+    false
+)
 
-// Adds gaps, keeping anchored keys anchored.
-// If only one side has an anchored key, the entire gap will be added
-// to the side without an anchored key
-fun List<LayoutEntry.Key>.addGap(totalGap: Float): List<LayoutEntry> {
-    if(totalGap == 0.0f) {
-        return this
-    } else {
-        val firstGapIdx = indexOfFirst { !it.data.anchored }.let {
-            if(it == -1) 0 else it
-        }
-        val finalGapIdx = indexOfLast { !it.data.anchored }.let {
-            if(it == -1) size - 1 else it
-        }
-
-        if(firstGapIdx == -1) return this
-
-        val hasAnchorLeft = firstGapIdx != 0
-        val hasAnchorRight = finalGapIdx != size - 1
-
-        return filterIsInstance<LayoutEntry>().toMutableList().apply {
-            var gapLeft =  totalGap / 2.0f
-            var gapRight = totalGap / 2.0f
-
-            if(hasAnchorLeft && !hasAnchorRight) {
-                gapLeft = 0.0f
-                gapRight = totalGap
-            } else if(hasAnchorRight && !hasAnchorLeft) {
-                gapLeft = totalGap
-                gapRight = 0.0f
-            }
-
-            add(firstGapIdx, LayoutEntry.Gap(gapLeft))
-            add(finalGapIdx + 2, LayoutEntry.Gap(gapRight))
+private class UnlockedBroadcastReceiver(val onDeviceUnlocked: () -> Unit) : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+        if (intent?.action == Intent.ACTION_USER_UNLOCKED) {
+            onDeviceUnlocked()
         }
     }
 }
 
-data class LayoutRow(
-    val entries: List<LayoutEntry>,
-    val widths: Map<KeyWidth, Float>,
-    val height: Float,
-    val splittable: Boolean
-)
+open class InputMethodServiceCompose : InputMethodService(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
+    private lateinit var mLifecycleRegistry: LifecycleRegistry
+    private lateinit var mViewModelStore: ViewModelStore
+    private lateinit var mSavedStateRegistryController: SavedStateRegistryController
 
-val ArrowRow = Row(
-    letters = listOf(
-        BaseKey("!icon/action_up|!code/action_up"),
-        BaseKey("!icon/action_down|!code/action_down"),
-        BaseKey("!icon/action_left|!code/action_left"),
-        BaseKey("!icon/action_right|!code/action_right"),
-    ),
-    attributes = KeyAttributes(
-        width = KeyWidth.Grow,
-        style = KeyVisualStyle.NoBackground,
-        showPopup = false,
-        repeatableEnabled = true
-    ),
-    splittable = false,
-    rowHeight = 0.8
-)
-
-data class LayoutParams(
-    val size: ComputedKeyboardSize,
-    val gap: Dp,
-    val standardRowHeight: Double,
-    val element: KeyboardLayoutElement,
-)
-
-data class LayoutEngine(
-    val context: Context,
-    val keyboard: Keyboard,
-    val params: KeyboardParams,
-    val layoutParams: LayoutParams
-) {
-    val horizontalGap = layoutParams.gap
-    val verticalGap = layoutParams.gap * 2
-
-    val effectiveRows = keyboard.getEffectiveRows(params.mId.mNumberRowMode)
-
-    private val rows = run {
-        val filteredRows = effectiveRows.filter {
-            // Filter the Number row, when it's not active
-            when(keyboard.numberRowMode) {
-                NumberRowMode.UserConfigurable -> !it.isNumberRow || params.mId.mNumberRow
-                NumberRowMode.AlwaysEnabled    -> !it.isNumberRow || it.isNumberRow
-                NumberRowMode.AlwaysDisabled   -> !it.isNumberRow
-            }
-        }.filter {
-            // Display filler rows only when number row is explicitly active
-            it.numRowMode.displayByDefault ||
-                    (it.numRowMode.displayWhenExplicitlyActive && params.mId.mNumberRow) ||
-                    (it.numRowMode.displayWhenExplicitlyInactive && !params.mId.mNumberRow)
-        }
-
-        val finalRows = filteredRows +
-                if(params.mId.mArrowRow) { listOf(ArrowRow) } else { emptyList() }
-
-        finalRows
+    fun setOwners() {
+        val decorView = window.window?.decorView
+        decorView?.setViewTreeLifecycleOwner(this)
+        decorView?.setViewTreeViewModelStoreOwner(this)
+        decorView?.setViewTreeSavedStateRegistryOwner(this)
     }
 
-    private val density = context.resources.displayMetrics.density
+    override fun onCreate() {
+        super.onCreate()
 
+        mLifecycleRegistry = LifecycleRegistry(this)
+        mLifecycleRegistry.currentState = Lifecycle.State.INITIALIZED
 
-    private val totalRowHeight = params.mId.mHeight.toFloat()
+        mViewModelStore = ViewModelStore()
 
-    private val horizontalGapPx = (horizontalGap.value * density)
-    private val verticalGapPx = (verticalGap.value * density)
-    private val rowHeightPx = computeRowHeight()
-    private val bottomRowHeightPx = when(keyboard.bottomRowHeightMode) {
-        BottomRowHeightMode.Fixed -> layoutParams.standardRowHeight
-        BottomRowHeightMode.Flexible -> rowHeightPx
+        mSavedStateRegistryController = SavedStateRegistryController.create(this)
+        mSavedStateRegistryController.performRestore(null)
+
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
     }
 
-    private fun computeRowHeight(): Double {
-        val normalKeyboardHeight = totalRowHeight
-
-        // divide by total row height
-        return when(keyboard.bottomRowHeightMode) {
-            BottomRowHeightMode.Fixed -> ((normalKeyboardHeight - layoutParams.standardRowHeight) / rows.filter { !it.isBottomRow }.sumOf { it.rowHeight })
-            BottomRowHeightMode.Flexible -> (normalKeyboardHeight) / rows.sumOf { it.rowHeight }
-        }
+    override fun onDestroy() {
+        super.onDestroy()
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
     }
 
-    private val isSplitLayout = layoutParams.size is SplitKeyboardSize
-    private val isOneHandedLayout = layoutParams.size is OneHandedKeyboardSize
-
-    private val layoutWidth = if(isSplitLayout) {
-        (layoutParams.size as SplitKeyboardSize).splitLayoutWidth
-    } else if(isOneHandedLayout) {
-        (layoutParams.size as OneHandedKeyboardSize).layoutWidth
-    } else {
-        params.mId.mWidth
+    override fun onWindowShown() {
+        super.onWindowShown()
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
     }
 
-    private val unsplitLayoutWidth = if(isSplitLayout) {
-        params.mId.mWidth
-    } else {
-        layoutWidth
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        mLifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     }
 
-    private val spacebarScale = try {
-        Settings.getInstance().current?.mSpacebarWidthScale ?: 1.0f
-    } catch (_: Exception) {
-        1.0f
+    override val lifecycle: Lifecycle
+        get() = mLifecycleRegistry
+    override val savedStateRegistry: SavedStateRegistry
+        get() = mSavedStateRegistryController.savedStateRegistry
+    override val viewModelStore: ViewModelStore
+        get() = mViewModelStore
+
+    internal var composeView: ComposeView? = null
+
+    override fun onCreateInputView(): View =
+        ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            setParentCompositionContext(null)
+
+            setOwners()
+
+            composeView = this
+        }
+}
+
+class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripController,
+        DynamicThemeProviderOwner, FoldStateProvider, KeyboardSizeStateProvider {
+
+    val imeManager = IMEManager(this)
+
+    val latinIMELegacy = LatinIMELegacy(
+        this as InputMethodService,
+        this as LatinIMELegacy.SuggestionStripController,
+    )
+
+    val uixManager = UixManager(this)
+
+    val sizingCalculator = KeyboardSizingCalculator(this, uixManager)
+
+    private var activeThemeOption: ThemeOption? = null
+    private val activeColorScheme = mutableStateOf(DefaultDarkScheme.obtainColors(this))
+    private var pendingRecreateKeyboard: Boolean = false
+
+    val colorScheme get() = activeColorScheme.value
+    val keyboardColor get() = colorScheme.keyboardSurface.let { fallback ->
+        drawableProvider?.keyboardColor?.let { androidx.compose.ui.graphics.Color(it) } ?: fallback
     }
 
-    private val minimumBottomFunctionalKeyWidth = (layoutWidth * (keyboard.minimumBottomRowFunctionalKeyWidth / spacebarScale).coerceAtLeast(0.04f))
+    val size: MutableState<ComputedKeyboardSize?> = mutableStateOf(null)
+    private fun calculateSize(): ComputedKeyboardSize? = sizingCalculator.calculate(
+        getPrimaryLayoutOverride(currentInputEditorInfo) ?: latinIMELegacy.mKeyboardSwitcher.keyboard?.mId?.mKeyboardLayoutSetName ?: "qwerty",
+        Settings.getInstance().current
+    )
 
-    private val regularKeyWidth = computeRegularKeyWidth()
-    private val unsplitRegularKeyWidth = computeRegularKeyWidth(unsplitLayoutWidth)
-    private val minimumKeyWidth = regularKeyWidth / 2
+    private var drawableProvider: DynamicThemeProvider? = null
 
-    private val minFunctionalKeyWidth = layoutWidth * keyboard.minimumFunctionalKeyWidth
-    private val maxFunctionalKeyWidth = (layoutWidth * maxOf(0.15f,
-        keyboard.overrideWidths[KeyWidth.FunctionalKey] ?: 0.15f))
+    private var settingsRefreshRequired = false
+    private fun recreateKeyboard() {
+        latinIMELegacy.updateTheme()
 
-    private val bottomRegularKeyWidth = (0.1f / spacebarScale).coerceAtLeast(0.03f) * layoutWidth
-
-
-    private fun computeRegularKeyWidth(layoutWidth: Int = this.layoutWidth): Float {
-        return keyboard.overrideWidths[KeyWidth.Regular]?.let { it * layoutWidth.toFloat() } ?: run {
-            (layoutWidth.toFloat() / effectiveRows.filter { it.isLetterRow }.maxOf { it.keys.size }.toFloat()) - EPS
-        }
-    }
-
-    private fun computeRowWidths(row: List<LayoutEntry.Key>, regularKeyWidth: Float, layoutWidth: Float, functionalWidth: Float? = null): Map<KeyWidth, Float> {
-        var availableSpace = layoutWidth
-
-        val counts = mutableMapOf<KeyWidth, Int>().apply {
-            KeyWidth.entries.forEach {
-                set(it, row.count { key -> key.data.width == it })
-            }
-        }
-
-        val rowWidths = keyboard.overrideWidths.mapValues {
-            it.value * layoutWidth
-        }.toMutableMap()
-
-
-        // Special case: shrink regular key width for this row, if needed to fit functional keys
-        val localRegularKeyWidth = run {
-            if(functionalWidth != null) {
-                val remainingSpace = availableSpace - counts.entries.sumOf {
-                    if(it.value == 0) {
-                        0.0
-                    } else when(it.key) {
-                        KeyWidth.Regular -> 0.0
-                        KeyWidth.FunctionalKey -> functionalWidth.toDouble() * it.value
-                        KeyWidth.Grow -> Double.NaN // TODO: Not sure what to do if a Grow is in the same row
-                        else -> (rowWidths[it.key]?.toDouble() ?: 0.0) * it.value
-                    }
-                }.toFloat()
-
-                val maxRegularKeyWidth = if(remainingSpace.isNaN()) {
-                    Float.POSITIVE_INFINITY
-                } else {
-                    remainingSpace / counts[KeyWidth.Regular]!!.toFloat()
-                }
-
-                regularKeyWidth.coerceAtMost(maxRegularKeyWidth)
-            } else {
-                regularKeyWidth
-            }
-        }.let {
-            if(it.isInfinite() || it.isNaN()) {
-                throwIfDebug(Exception("Infinite or NaN regular key width: ${it}"))
-                1.0f
-            } else it
-        }
-
-        // Subtract regular keys
-        rowWidths.putIfAbsent(KeyWidth.Regular, localRegularKeyWidth)
-        availableSpace -= rowWidths[KeyWidth.Regular]!! * counts[KeyWidth.Regular]!!
-        assert(availableSpace >= 0) {
-            "Ran out of space!\nWidths: $rowWidths\nLayout width: $layoutWidth\nAvailable space: $availableSpace\nCounts: $counts"
-        }
-        counts.remove(KeyWidth.Regular)
-
-        // Calculate functional key width, or use the provided one
-        rowWidths.putIfAbsent(KeyWidth.FunctionalKey, functionalWidth ?:
-            if(counts[KeyWidth.FunctionalKey]!! > 0) {
-                if(counts[KeyWidth.Grow]!! > 0) {
-                    // The width of functional keys is indeterminate within this row,
-                    // we will need to do a second pass to find a fitting width.
-                    // For now, set it to minimum width.
-                    minimumKeyWidth
-                } else {
-                    // The width of functional keys fills the available space.
-                    availableSpace / counts[KeyWidth.FunctionalKey]!!.toFloat()
-                }
-            } else {
-                0.0f
-            }
-        )
-
-        availableSpace -= rowWidths[KeyWidth.FunctionalKey]!! * counts[KeyWidth.FunctionalKey]!!.toFloat()
-        //assert(availableSpace >= 0)
-        counts.remove(KeyWidth.FunctionalKey)
-
-        // Subtract remaining custom keys
-        counts.forEach {
-            if(it.key != KeyWidth.Grow && it.value > 0) {
-                availableSpace -= it.value * (rowWidths[it.key] ?: throw IllegalStateException("Custom width ${it.key} is present, but width undeclared. Declared widths: $rowWidths"))
-            }
-        }
-
-        // Set grow key width
-        rowWidths.putIfAbsent(KeyWidth.Grow, if(counts[KeyWidth.Grow]!! > 0) {
-            availableSpace / counts[KeyWidth.Grow]!!.toFloat()
+        if(settingsRefreshRequired) {
+            latinIMELegacy.mKeyboardSwitcher.loadKeyboard(
+                currentInputEditorInfo ?: return,
+                latinIMELegacy.mSettings.current,
+                latinIMELegacy.currentAutoCapsState
+            )
         } else {
-            0.0f
-        })
-        //assert(availableSpace >= 0.0f)
-
-        return rowWidths
-    }
-
-    private fun alignForSplitLayout(rows: List<LayoutRow>): List<LayoutRow> {
-        if(!isSplitLayout) return rows
-
-        val splitWidths = rows.map { row ->
-            if(!row.splittable) {
-                0.0f
-            } else if(row.entries.firstOrNull { it is LayoutEntry.Key && it.data.width == KeyWidth.Grow } != null) {
-                0.0f
-            } else {
-                row.entries.splitRow().first.sumOf { it.widthPx.toDouble() }.toFloat()
-            }
+            latinIMELegacy.mKeyboardSwitcher.mState.onLoadKeyboard(
+                currentInputEditorInfo ?: return,
+                latinIMELegacy.currentAutoCapsState,
+                latinIMELegacy.mKeyboardSwitcher.keyboard?.mId?.mKeyboardLayoutSetName,
+                null
+            )
         }
 
-        val maxSplitWidth = splitWidths.max()
+        settingsRefreshRequired = false
+    }
 
-        return rows.mapIndexed { i, row ->
-            if(!row.splittable) return@mapIndexed row
+    private var isNavigationBarVisible = false
+    fun updateNavigationBarVisibility(visible: Boolean? = null) {
+        if(visible != null) isNavigationBarVisible = visible
 
-            val currentRowWidth = splitWidths[i].let { width ->
-                if(width == 0.0f) {
-                    row.entries.sumOf {
-                        if(it is LayoutEntry.Key && it.data.width == KeyWidth.Grow) {
-                            0.0f
-                        } else {
-                            it.widthPx
-                        }.toDouble()
-                    }.toFloat()
+        if(SupportsNavbarExtension) {
+            val isFloating = size.value is FloatingKeyboardSize
+
+            val color = (colorScheme.navigationBarColor ?: colorScheme.keyboardSurface)
+
+            val colorToUse = when {
+                isFloating -> Color.BLACK
+                else -> (colorScheme.navigationBarColorForTransparency ?: color).toArgb()
+            } and 0x00FFFFFF
+
+            window.window?.let { window ->
+                if(UseTransparentNavbar) {
+                    applyWindowColors(window, colorToUse, statusBar = false)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        window.setNavigationBarContrastEnforced(isFloating)
+                    }
+
+                    WindowCompat.setDecorFitsSystemWindows(window, false)
                 } else {
-                    width
+                    applyWindowColors(window, color.toArgb(), statusBar = false)
                 }
             }
+        } else {
+            val color = colorScheme.navigationBarColor?.toArgb() ?: drawableProvider?.keyboardColor
 
-            val extraSpace = maxSplitWidth - currentRowWidth
-
-            val growTarget = if(splitWidths[i] == 0.0f) {
-                KeyWidth.Grow
-            } else {
-                KeyWidth.Regular
+            window.window?.let { window ->
+                if(color == null || !isNavigationBarVisible) {
+                    applyWindowColors(window, Color.TRANSPARENT, statusBar = false)
+                } else {
+                    applyWindowColors(window, color, statusBar = false)
+                }
             }
-
-            val growableKeyCount = row.entries.filterIsInstance<LayoutEntry.Key>().count {
-                it.data.width == growTarget
-            }
-
-            val widthPerKey = 2 * extraSpace / growableKeyCount
-            LayoutRow(
-                entries = row.entries.map { entry ->
-                    if(entry is LayoutEntry.Key && entry.data.width == growTarget) {
-                        LayoutEntry.Key(entry.data, if(growTarget == KeyWidth.Regular) {
-                            entry.widthPx + widthPerKey
-                        } else {
-                            widthPerKey
-                        }, rowSpan = entry.rowSpan, heightOverride = entry.heightOverride)
-                    } else {
-                        entry
-                    }
-                },
-                widths = row.widths,
-                height = row.height,
-                splittable = row.splittable
-            )
         }
     }
 
-    private fun buildLayoutRow(
-        computedRowWithoutWidths: List<LayoutEntry.Key>,
-        widths: Map<KeyWidth, Float>,
-        height: Float,
-        splittable: Boolean
-    ): LayoutRow {
-        val computedRow = computedRowWithoutWidths.map { key ->
-            LayoutEntry.Key(key.data, widths[key.data.width]!!, key.rowSpan)
-        }
+    private fun updateDrawableProvider(colorScheme: KeyboardColorScheme) {
+        activeColorScheme.value = colorScheme
+        drawableProvider = BasicThemeProvider(this, colorScheme)
 
-        val totalRowWidth = computedRow.sumOf { it.widthPx.toDouble() }.toFloat()
-
-        val rowLayoutWidth = if(splittable) { layoutWidth } else { unsplitLayoutWidth }
-        val entries = mergeDuplicates(computedRow.addGap(rowLayoutWidth - totalRowWidth))
-
-        return LayoutRow(
-            entries = entries,
-            widths = widths,
-            height = height,
-            splittable = splittable
-        )
+        updateNavigationBarVisibility()
+        uixManager.onColorSchemeChanged()
     }
 
-    private fun computeRows(rows: List<Row>): List<LayoutRow> {
-        val rowLayoutWidths = rows.map {
-            if(it.splittable) {
-                layoutWidth
-            } else {
-                unsplitLayoutWidth
-            }.toFloat()
+    override fun getDrawableProvider(): DynamicThemeProvider {
+        return drawableProvider ?: BasicThemeProvider(this, colorScheme).let {
+            drawableProvider = it
+            it
         }
-
-        val rowRegularKeyWidths = rows.map {
-            // Special case: action row uses regular key width to match the other rows
-            if(it.isBottomRow) {
-                bottomRegularKeyWidth
-            } else if(it.splittable) {
-                regularKeyWidth
-            } else {
-                unsplitRegularKeyWidth
-            }.toFloat()
-        }
-
-        // Measure key coordinate
-        val numColumnsPerRow = mutableListOf<Int>()
-        rows.forEach { row ->
-            val numColumns = row.keys.sumOf { if(it.countsToKeyCoordinate(params, row, keyboard)) (1 as Int) else 0 }
-            if(numColumns > 0) {
-                numColumnsPerRow.add(numColumns)
-            }
-        }
-
-        val keyCoordinateMeasurement = KeyCoordinateMeasurement(
-            totalRows = numColumnsPerRow.size,
-            numColumnsByRow = numColumnsPerRow.toList()
-        )
-
-        var regularRow = 0
-        val computedRowWithoutWidths = rows.map { row ->
-            var regularColumn = 0
-            row.keys.mapNotNull { key ->
-                val coordinate = KeyCoordinate(
-                    regularRow,
-                    regularColumn,
-                    layoutParams.element,
-                    keyCoordinateMeasurement
-                )
-
-                key.computeData(params, row, keyboard, coordinate)?.let { data ->
-                    if(data.countsToKeyCoordinate) {
-                        regularColumn += 1
-                    }
-
-                    LayoutEntry.Key(data, widthPx = -1.0f, rowSpan = data.rowSpan)
-                }
-            }.let {
-                if (regularColumn > 0) {
-                    regularRow += 1
-                }
-                it
-            }
-        }
-
-        val rowWidths = computedRowWithoutWidths.mapIndexed { i, it ->
-            computeRowWidths(
-                row = it,
-                regularKeyWidth = rowRegularKeyWidths[i],
-                layoutWidth = rowLayoutWidths[i]
-            )
-        }.let { preWidths ->
-            // Find the smallest functional key width
-            val functionalWidth = (
-                preWidths.map { it[KeyWidth.FunctionalKey]!! }
-                    .filter { it > minimumKeyWidth }
-                    .minOrNull() ?: minimumKeyWidth
-            ).coerceIn(minFunctionalKeyWidth, maxFunctionalKeyWidth)
-
-            computedRowWithoutWidths.mapIndexed { i, it ->
-                computeRowWidths(
-                    row = it,
-                    regularKeyWidth = rowRegularKeyWidths[i],
-                    layoutWidth = rowLayoutWidths[i],
-                    functionalWidth = if (rows[i].isBottomRow && keyboard.bottomRowWidthMode.separateFunctional) {
-                        maxOf(minimumBottomFunctionalKeyWidth, functionalWidth / spacebarScale)
-                    } else {
-                        functionalWidth
-                    }
-                )
-            }
-        }
-
-
-        val computedRowWithWidths = computedRowWithoutWidths.mapIndexed { i, row ->
-            val height = if(rows[i].isBottomRow) {
-                bottomRowHeightPx
-            } else {
-                (rows[i].rowHeight * rowHeightPx)
-            }
-
-            buildLayoutRow(
-                row,
-                rowWidths[i],
-                height.toFloat(),
-                rows[i].splittable
-            )
-        }
-
-        var result = computedRowWithWidths
-        result = processRowSpan(result)
-        result = mirrorForOneHanded(result)
-        result = alignForSplitLayout(result)
-
-        return result
     }
 
-    private fun processRowSpan(rows: List<LayoutRow>): List<LayoutRow> {
-        // Post-process rowSpan: set heightOverride on spanning keys and replace
-        // corresponding entries in subsequent rows with gaps
-        val rowSpanProcessed = rows.toMutableList()
-        for (rowIdx in rowSpanProcessed.indices) {
-            val row = rowSpanProcessed[rowIdx]
-            val newEntries = row.entries.mapIndexed { entryIdx, entry ->
-                if (entry is LayoutEntry.Key && entry.rowSpan > 1) {
-                    // Accumulate height from this row and the next (rowSpan - 1) rows
-                    var totalHeight = row.height
-                    for (spanOffset in 1 until entry.rowSpan) {
-                        val targetRowIdx = rowIdx + spanOffset
-                        if (targetRowIdx < rowSpanProcessed.size) {
-                            totalHeight += rowSpanProcessed[targetRowIdx].height
+    private fun updateColorsIfDynamicChanged() {
+        if(activeThemeOption?.dynamic == true) {
+            val currColors = colorScheme
+            val nextColors = activeThemeOption!!.obtainColors(this)
 
-                            // Replace the matching entry in the subsequent row with a gap
-                            val targetRow = rowSpanProcessed[targetRowIdx]
-                            val targetEntries = targetRow.entries.toMutableList()
+            if(currColors.differsFrom(nextColors)) {
+                updateDrawableProvider(nextColors)
+                recreateKeyboard()
+                return
+            }
+        }
 
-                            // Find the entry at the same horizontal position
-                            var currentX = 0.0f
-                            var sourceX = 0.0f
-                            for (j in 0 until entryIdx) {
-                                sourceX += row.entries[j].widthPx
+        // TODO: Verify this actually fixes anything
+        if(drawableProvider?.displayDpi != resources.displayMetrics.densityDpi) {
+            updateDrawableProvider(colorScheme)
+            recreateKeyboard()
+            return
+        }
+    }
+
+    private fun onSizeMaybeUpdated() {
+        if(sizingCalculator.didMaybeChange(size.value)) {
+            onSizeUpdated()
+        }
+    }
+
+    fun onSizeUpdated() {
+        val newSize = calculateSize() ?: return
+        val shouldInvalidateKeyboard = size.value?.let { oldSize ->
+            when {
+                oldSize is FloatingKeyboardSize && newSize is FloatingKeyboardSize -> {
+                    oldSize.width != newSize.width || oldSize.height != newSize.height
+                }
+                else -> !newSize.dimensionsSameAs(oldSize)
+            }
+        } ?: true
+
+        size.value = newSize
+
+        if(shouldInvalidateKeyboard) {
+            invalidateKeyboard(true)
+            updateNavigationBarVisibility()
+        }
+    }
+
+    fun invalidateKeyboard(refreshSettings: Boolean = false) {
+        if(destroying) return
+        size.value = calculateSize()
+        updateNavigationBarVisibility()
+        settingsRefreshRequired = settingsRefreshRequired || refreshSettings
+
+        if(!uixManager.isMainKeyboardHidden) {
+            recreateKeyboard()
+        } else {
+            pendingRecreateKeyboard = true
+        }
+    }
+
+    // Called by UixManager when the intention is to subsequently call LegacyKeyboardView with hidden=false
+    // Maybe this can be changed to LaunchedEffect
+    fun onKeyboardShown() {
+        if(pendingRecreateKeyboard) {
+            pendingRecreateKeyboard = false
+            recreateKeyboard()
+        } else {
+            latinIMELegacy.mKeyboardSwitcher?.mainKeyboardView?.invalidateAllKeys()
+        }
+    }
+
+    private var currentSubtype = ""
+
+    val jobs = mutableListOf<Job>()
+    private fun launchJob(task: suspend CoroutineScope.() -> Unit) {
+        jobs.add(lifecycleScope.launch(block = task))
+    }
+
+    private fun stopJobs() {
+        jobs.forEach { it.cancel() }
+        jobs.clear()
+    }
+
+    private var unlockReceiver = UnlockedBroadcastReceiver { onDeviceUnlocked() }
+
+    override fun onCreate() {
+        super.onCreate()
+
+        UserBinaryDictionary.resetUserDictionariesRequiringRecreation()
+
+        CanThrowIfDebug = isDirectBootUnlocked
+
+        JniUtils.loadNativeLibrary()
+
+        LayoutManager.init(this)
+
+        DataStoreHelper.init(this)
+
+        val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
+        registerReceiver(unlockReceiver, filter)
+
+        Subtypes.addDefaultSubtypesIfNecessary(this)
+
+        getSettingBlocking(THEME_KEY).let {
+            val themeOption = getThemeOption(this, it).orDefault(this@LatinIME)
+
+            activeThemeOption = themeOption
+            activeColorScheme.value = themeOption.obtainColors(this@LatinIME)
+        }
+
+        imeManager.onCreate()
+        latinIMELegacy.onCreate()
+
+        scheduleUpdateCheckingJob(this)
+        launchJob { uixManager.showUpdateNoticeIfNeeded() }
+
+        launchJob {
+            getSettingFlow(THEME_KEY).collect {
+                val themeOption = getThemeOption(this@LatinIME, it).orDefault(this@LatinIME)
+
+                activeThemeOption = themeOption
+                activeColorScheme.value = themeOption.obtainColors(this@LatinIME)
+
+                updateDrawableProvider(activeColorScheme.value)
+                invalidateKeyboard()
+            }
+        }
+
+        launchJob {
+            combine(
+                getSettingFlow(HiddenKeysSetting),
+                getSettingFlow(KeyBordersSetting),
+                getSettingFlow(KeyHintsSetting)
+            ) { a, b, c -> Triple(a, b, c) }.collect {
+                    drawableProvider?.let { provider ->
+                        if(provider is BasicThemeProvider) {
+                            activeThemeOption?.obtainColors?.let { f ->
+                                updateDrawableProvider(f(this@LatinIME))
+                                invalidateKeyboard()
                             }
-
-                            for (j in targetEntries.indices) {
-                                if (Math.abs(currentX - sourceX) < 1.0f &&
-                                    Math.abs(targetEntries[j].widthPx - entry.widthPx) < 1.0f) {
-                                    targetEntries[j] = LayoutEntry.Gap(targetEntries[j].widthPx)
-                                    break
-                                }
-                                currentX += targetEntries[j].widthPx
-                            }
-
-                            rowSpanProcessed[targetRowIdx] = targetRow.copy(entries = targetEntries)
                         }
                     }
-                    LayoutEntry.Key(entry.data, entry.widthPx, entry.rowSpan, heightOverride = totalHeight)
-                } else {
-                    entry
                 }
-            }
-            rowSpanProcessed[rowIdx] = row.copy(entries = newEntries)
         }
 
-        return rowSpanProcessed
-    }
+        launchJob {
+            val onNewSubtype: suspend (String) -> Unit = {
+                val activeSubtype = it.ifEmpty {
+                    getSettingBlocking(SubtypesSetting).firstOrNull()
+                }
 
-    private fun mirrorForOneHanded(rows: List<LayoutRow>): List<LayoutRow> {
-        if(!isOneHandedLayout || !keyboard.mirrorInOneHanded) return rows
-
-        val direction = (layoutParams.size as OneHandedKeyboardSize).direction
-        if(direction != OneHandedDirection.Left) return rows
-
-        return rows.map { row ->
-            row.copy(entries = swapOuterKeys(row.entries))
-        }
-    }
-
-    // Swap the leading and trailing non-Regular-width entries (functional keys, gaps, grow keys)
-    // while keeping the inner letter keys in their original order.
-    private fun swapOuterKeys(entries: List<LayoutEntry>): List<LayoutEntry> {
-        fun isOuter(entry: LayoutEntry): Boolean = when(entry) {
-            is LayoutEntry.Gap -> true
-            is LayoutEntry.Key -> entry.data.width != KeyWidth.Regular && entry.data.anchored
-        }
-
-        val leadingCount = entries.indexOfFirst { !isOuter(it) }.let { if(it == -1) entries.size else it }
-        val trailingCount = entries.asReversed().indexOfFirst { !isOuter(it) }.let { if(it == -1) entries.size else it }
-
-        if(leadingCount == 0 && trailingCount == 0) return entries
-        if(leadingCount + trailingCount >= entries.size) return entries
-
-        val leading = entries.subList(0, leadingCount)
-        val middle = entries.subList(leadingCount, entries.size - trailingCount)
-        val trailing = entries.subList(entries.size - trailingCount, entries.size)
-
-        return trailing + middle + leading
-    }
-
-    private fun mergeDuplicates(row: List<LayoutEntry>): List<LayoutEntry> {
-        if(row.isEmpty()) return emptyList()
-
-        return row.fold(mutableListOf()) { acc, curr ->
-            if(acc.isEmpty()) {
-                acc.add(curr)
-            } else {
-                val last = acc.last()
-                if (last is LayoutEntry.Key && curr is LayoutEntry.Key && last.data == curr.data) {
-                    val lastVal = acc.removeAt(acc.size - 1)
-                    acc.add(LayoutEntry.Key(
-                        data = curr.data,
-                        widthPx = last.widthPx + curr.widthPx,
-                        rowSpan = curr.rowSpan
-                    ))
-                } else {
-                    acc.add(curr)
+                if(activeSubtype != null && activeSubtype != currentSubtype) {
+                    withContext(Dispatchers.Main) {
+                        changeSubtype(activeSubtype)
+                    }
                 }
             }
 
-            acc
+            onNewSubtype(getSetting(ActiveSubtype))
+
+            dataStore.data.collect {
+                onNewSubtype(it[ActiveSubtype.key] ?: ActiveSubtype.default)
+            }
+        }
+
+        launchJob {
+            getSettingFlow(SubtypesSetting).collect {
+                Subtypes.updateLanguageOnSpaceBarVisibility(this@LatinIME)
+            }
+        }
+
+        launchJob {
+            dataStore.data.collect {
+                CrashLoggingApplication.logPreferences(it)
+            }
+        }
+
+        // Listen to size changes
+        launchJob {
+            val prev: MutableMap<KeyboardSizeSettingKind, String?> =
+                KeyboardSizeSettingKind.entries.associateWith { null }.toMutableMap()
+
+            dataStore.data.collect { data ->
+                prev.keys.toList().forEach {
+                    if(data[KeyboardSettings[it]!!.key] != prev[it]) {
+                        prev[it] = data[KeyboardSettings[it]!!.key]
+                        onSizeUpdated()
+                    }
+                }
+            }
+        }
+
+        uixManager.onCreate()
+
+        Settings.getInstance().settingsChangedListeners.add { oldSettings, newSettings ->
+            val differs = (oldSettings.mActionKeyId != newSettings.mActionKeyId)
+                    || (oldSettings.mShowsActionKey != newSettings.mShowsActionKey)
+                    || (oldSettings.mSpacebarWidthScale != newSettings.mSpacebarWidthScale)
+
+            if (differs) {
+                invalidateKeyboard(refreshSettings = true)
+            }
         }
     }
 
-    private val validNumbersForHint = "1234567890".map { it.toString() }.map { params.mTextsSet.resolveTextReference("!text/keyspec_symbols_$it") ?: it }.toSet()
-    private val englishNumbers = "1234567890".map { it.toString() }.toSet()
-    private val blacklistedHintsForNumbers = buildList {
-        // Subscripts/superscripts, fractions
-        addAll((0x2070 .. 0x208E).map { it.toChar() })
-        addAll((0x2150 .. 0x215F).map { it.toChar() })
-        add('\u00B0')
-        add('\u00B2')
-        add('\u00B3')
-        add('\u00B9')
-        add('\u00BC')
-        add('\u00BD')
-        add('\u00BE')
-    }.map { it.toString() }.toSet()
-    private val showAllHintsSetting = params.mId.mLongPressKeySettings.showHints
+    fun changeSubtype(subtypeString: String) {
+        if(currentSubtype == subtypeString) return
+        currentSubtype = subtypeString
 
-    private fun computedKeyToKey(row: Int, col: Int, data: ComputedKeyData, x: Int, y: Int, width: Int, height: Int, leftGap: LayoutEntry.Gap?, rightGap: LayoutEntry.Gap?): org.futo.inputmethod.keyboard.Key? {
-        // These keys are empty keys and do not get added, leaving an empty gap in place of the key
-        // The hitbox of other keys does not get expanded to include this gap though, unlike
-        // gaps added for centering rows
-        if(data.label.isEmpty() && data.icon.isEmpty() && data.code == Constants.CODE_UNSPECIFIED)
-            return null
+        val subtype = Subtypes.convertToSubtype(subtypeString)
+        changeInputMethodSubtype(subtype)
+        uixManager.updateLocale(Subtypes.getLocale(subtype))
+    }
 
+    private var destroying = false
+    override fun onDestroy() {
+        destroying = true
+        unregisterReceiver(unlockReceiver)
+        stopJobs()
+        viewModelStore.clear()
+        uixManager.onDestroy()
+        imeManager.onDestroy()
+        Settings.getInstance().settingsChangedListeners.clear()
+        latinIMELegacy.onDestroy()
+        super.onDestroy()
+    }
 
-        val actionsFlags = if(!data.showPopup) { KeyConsts.ACTION_FLAGS_NO_KEY_PREVIEW } else { 0 } or
-                if(data.longPressEnabled) { KeyConsts.ACTION_FLAGS_ENABLE_LONG_PRESS } else { 0 } or
-                if(data.repeatable) { KeyConsts.ACTION_FLAGS_IS_REPEATABLE } else { 0 }
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        Log.w("LatinIME", "Configuration changed")
+        size.value = calculateSize()
+        updateNavigationBarVisibility()
+        latinIMELegacy.onConfigurationChanged(newConfig)
+        super.onConfigurationChanged(newConfig)
+        uixManager.updateLocaleOnCfgChanged()
+    }
 
-        val verticalGapForKey = when {
-            keyboard.rowHeightMode.clampHeight && height > data.rowSpan * layoutParams.standardRowHeight ->
-                height - data.rowSpan * layoutParams.standardRowHeight
+    override fun onInitializeInterface() {
+        latinIMELegacy.onInitializeInterface()
+    }
 
-            else ->
-                0.0
-        } + verticalGapPx
+    private var legacyInputView: MutableState<View?> = mutableStateOf(null)
+    override fun onCreateInputView(): View {
+        val composeView = super.onCreateInputView()
 
-        val hasExplicitHint = data.hint.isNotEmpty()
+        legacyInputView.value = latinIMELegacy.onCreateInputView()
+        latinIMELegacy.setComposeInputView(composeView)
 
-        val hint = when {
-            // If we have an explicit hint, use the specified hint
-            hasExplicitHint -> data.hint
+        uixManager.setContent()
 
-            // If we have no explicit hint, and show hints setting is disabled,
-            // then either show a number or nothing
-            !showAllHintsSetting -> //&& params.mId.mElement.kind.isAlphabet ->
-                data.moreKeys.mapNotNull { it.mLabel }.firstOrNull { validNumbersForHint.contains(it) && it != data.label } ?: ""
-
-            // In the situation that this is a number, only show a hint if it's not a tiny little
-            // superscript or subscript
-            englishNumbers.contains(data.label) && validNumbersForHint.contains(data.label)
-                ->
-                data.moreKeys.firstOrNull {
-                    it.mLabel != null
-                            && !blacklistedHintsForNumbers.contains(it.mLabel)
-                            && it.mLabel != data.label
-                }?.mLabel ?: ""
-
-            // If we have no explicit hint and show hints setting is enabled (or we are in symbols menu),
-            // set this to null which will later automatically select a hint based on
-            // the first element of moreKeys
-            else -> null
+        // Due to annoying Android animation nonsense, we may never receive a notification of the
+        // correct insets, a 250ms delay to recheck is the best solution I could come up with
+        window.window?.decorView?.setOnApplyWindowInsetsListener { v, insets ->
+            window.window!!.decorView.post { onSizeUpdated() }
+            window.window!!.decorView.postDelayed({ onSizeMaybeUpdated() }, 250L)
+            v.onApplyWindowInsets(insets)
         }
 
-        // For the spacebar specifically, extend the hitbox all the way down to include the padded area,
-        // unless arrow row is active
-        val extendedBottomPadding = if(data.style == KeyVisualStyle.Spacebar && data.code == Constants.CODE_SPACE && !params.mId.mArrowRow) {
-            layoutParams.size.padding.bottom
+        return composeView
+    }
+
+    private var inputViewHeight: Int = -1
+
+    fun getInputViewHeight(): Int = inputViewHeight
+    fun getViewHeight(): Int = composeView?.height ?: resources.displayMetrics.heightPixels
+    fun getViewWidth(): Int = composeView?.width ?: resources.displayMetrics.widthPixels
+
+    private var isInputModal = false
+    fun setInputModal(to: Boolean) {
+        isInputModal = to
+    }
+
+    // The keyboard view really doesn't like being detached, so it's always
+    // shown, but resized to 0 if an action window is open
+    @Composable
+    internal fun LegacyKeyboardView(modifier: Modifier, hidden: Boolean) {
+        val modifier = if(hidden) {
+            modifier
+                .clipToBounds()
+                .size(0.dp)
         } else {
-            0
+            modifier.onSizeChanged {
+                inputViewHeight = it.height
+            }
+        }.safeKeyboardPadding()
+
+        val legacyInputView = legacyInputView.value
+        key(legacyInputView) {
+            AndroidView(factory = {
+                legacyInputView!!.also {
+                    if(it.parent != null) (it.parent as ViewGroup).removeView(it)
+                }
+            }, modifier = modifier, onRelease = {
+                val view = it as InputView
+                view.deallocateMemory()
+                view.removeAllViews()
+            })
+        }
+    }
+
+    // necessary for when KeyboardSwitcher updates the theme
+    fun updateLegacyView(newView: View) {
+        legacyInputView.value = newView
+        composeView?.let {
+            latinIMELegacy.setComposeInputView(it)
         }
 
-        return org.futo.inputmethod.keyboard.Key(
-            code = data.code,
-            label = data.label,
-            width = width - horizontalGapPx.roundToInt(),
-            height = height - verticalGapForKey.roundToInt(),
-            iconId = data.icon,
-            x = x,
-            y = y,
-            actionFlags = actionsFlags,
-            horizontalGap = horizontalGapPx.roundToInt(),
-            verticalGap = verticalGapForKey.roundToInt(),
-            labelFlags = data.labelFlags,
-            moreKeys = data.moreKeys,
-            moreKeysColumnAndFlags = data.moreKeyFlags,
-            visualStyle = data.style,
-            outputText = data.outputText,
-            hintLabel = hint,
-            isFastLongPress = data.fastLongPress,
+        latinIMELegacy.setInputView(newView)
+    }
 
-            // Add leftGap and rightGap to the hitbox
-            // This makes the following area tappable,
-            // otherwise taps there wouldn't be registered
-            // q w e r t y u i o p
-            // #a s d f g h j k l#
-            // ^                 ^
-            // taps A       taps L
-            // Also add bottom padding for spacebar
-            hitBox = Rect(
-                x - (leftGap?.widthPx?.roundToInt() ?: 0),
-                y,
-                x + width + (rightGap?.widthPx?.roundToInt() ?: 0),
-                y + height + extendedBottomPadding
-            ),
+    override fun setInputView(view: View?) {
+        super.setInputView(view)
 
-            // Add flick keys
-            flickKeys = data.flick?.let {
-                it.directions
-                    .mapValues { computedKeyToKey(0, 0, it.value, x, y, width, height, null, null) }
-                    .filterValues { it != null }
-                    .mapValues { it.value!! }
-            },
+        composeView?.let {
+            latinIMELegacy.setComposeInputView(it)
+        }
 
-            labelOverride = data.flick?.label,
-            iconOverride = data.flick?.icon,
+        latinIMELegacy.setInputView(legacyInputView.value)
+    }
 
-            row = row,
-            column = col,
-            swipeCodeOverride = data.swipeLetter?.let {
-                it.firstNotNullOfOrNull { it.code }
-            }
+    override fun setCandidatesView(view: View?) {
+        return latinIMELegacy.setCandidatesView(view)
+    }
+
+    override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
+        super.onStartInput(attribute, restarting)
+        latinIMELegacy.onStartInput(attribute, restarting)
+        uixManager.inputStarted(attribute)
+        //imeManager.onStartInput() // TODO: Is this call needed or not?
+    }
+
+    override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        onSizeMaybeUpdated()
+        imeManager.onStartInput()
+        latinIMELegacy.onStartInputView(info, restarting)
+        lifecycleScope.launch { uixManager.showUpdateNoticeIfNeeded() }
+        updateColorsIfDynamicChanged()
+        uixManager.updateEmojiTranslationsIfNeeded()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        super.onFinishInputView(finishingInput)
+        latinIMELegacy.onFinishInputView(finishingInput)
+        uixManager.onInputFinishing()
+        imeManager.onFinishInput()
+    }
+
+    override fun onFinishInput() {
+        super.onFinishInput()
+        latinIMELegacy.onFinishInput()
+        uixManager.onInputFinishing()
+    }
+
+    private fun changeInputMethodSubtype(newSubtype: InputMethodSubtype?) {
+        latinIMELegacy.onCurrentInputMethodSubtypeChanged(newSubtype)
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        latinIMELegacy.onWindowShown()
+        updateColorsIfDynamicChanged()
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        latinIMELegacy.onWindowHidden()
+        uixManager.onInputFinishing()
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd
+        )
+
+        latinIMELegacy.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd
         )
     }
 
-    private fun addKey(row: Int, col: Int, data: ComputedKeyData, x: Int, y: Int, width: Int, height: Int, leftGap: LayoutEntry.Gap?, rightGap: LayoutEntry.Gap?) {
-        val key = computedKeyToKey(row, col, data, x, y, width, height, leftGap, rightGap) ?: return
-        params.onAddKey(key)
+    override fun onExtractedTextClicked() {
+        latinIMELegacy.onExtractedTextClicked()
+        super.onExtractedTextClicked()
     }
 
-    private fun addRow(idx: Int, row: List<LayoutEntry>, x: Float, y: Int, height: Int) {
-        var currentX = x
-        var colNum = 0
-        row.forEachIndexed { i, entry ->
-            when(entry) {
-                is LayoutEntry.Gap -> { }
-                is LayoutEntry.Key -> {
-                    // Adding gaps is only applicable on unanchored keys on the correct side of the keyboard
-                    val leftGap = if(i < row.size / 2 && !entry.data.anchored) { row.getOrNull(i - 1) as? LayoutEntry.Gap } else { null }
-                    val rightGap = if(i >= row.size / 2 && !entry.data.anchored) { row.getOrNull(i + 1) as? LayoutEntry.Gap } else { null }
+    override fun onExtractedCursorMovement(dx: Int, dy: Int) {
+        latinIMELegacy.onExtractedCursorMovement(dx, dy)
+        super.onExtractedCursorMovement(dx, dy)
+    }
 
-                    val keyHeight = entry.heightOverride?.roundToInt() ?: height
-                    addKey(idx, colNum, entry.data, currentX.roundToInt(), y, entry.widthPx.roundToInt(), keyHeight, leftGap, rightGap)
+    override fun hideWindow() {
+        latinIMELegacy.hideWindow()
+        super.hideWindow()
+    }
 
-                    // i != colNum because of Gap entries
-                    colNum += 1
+    override fun onDisplayCompletions(completions: Array<out CompletionInfo>?) {
+
+    }
+
+    fun getNavigationBarBottomInset(view: View): Int {
+        val windowInsets: WindowInsetsCompat? = ViewCompat.getRootWindowInsets(view)
+        if (windowInsets != null) {
+            val navBarInsets = windowInsets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            return navBarInsets.bottom
+        }
+        return 0
+    }
+
+    override fun onComputeInsets(outInsets: Insets?) {
+        // This method may be called before {@link #setInputView(View)}.
+        if (legacyInputView.value == null || composeView == null) {
+            return
+        }
+
+        val viewHeight = composeView!!.height
+        val size = size.value ?: return
+        latinIMELegacy.setInsets(outInsets!!.apply {
+            when(size) {
+                is FloatingKeyboardSize -> {
+                    val bottomInset = getNavigationBarBottomInset(composeView!!)
+                    val height = uixManager.touchableHeight
+
+                    val left   = uixManager.floatingPosition.x.toInt()
+                    val right  = (uixManager.floatingPosition.x + size.width).roundToInt()
+                    val top    = uixManager.floatingPosition.y.toInt() - uixManager.extraTopTouchHeight
+                    val bottom = (uixManager.floatingPosition.y + height).roundToInt()
+
+                    touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                    touchableRegion.set(left, top, right, bottom)
+                    contentTopInsets = viewHeight - bottomInset
+                    visibleTopInsets = viewHeight - bottomInset
+                }
+                else -> {
+                    touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+
+                    val touchableHeight = uixManager.touchableHeight
+                    val topInset = if(touchableHeight < 1 || touchableHeight >= viewHeight - 1) {
+                        val actionBarHeight = sizingCalculator.calculateTotalActionBarHeightPx()
+
+                        viewHeight - size.height - actionBarHeight
+                    } else {
+                        viewHeight - touchableHeight
+                    }
+
+                    contentTopInsets = topInset
+                    visibleTopInsets = topInset - uixManager.extraTopTouchHeight
                 }
             }
 
-            currentX += entry.widthPx
+            if(isInputModal || latinIMELegacy.mKeyboardSwitcher?.isShowingMoreKeysPanel == true) {
+                touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                touchableRegion.set(0, 0, composeView!!.width, composeView!!.height)
+            }
+        })
+    }
+
+    override fun onShowInputRequested(flags: Int, configChange: Boolean): Boolean {
+        return latinIMELegacy.onShowInputRequested(
+            flags,
+            configChange
+        ) || super.onShowInputRequested(flags, configChange)
+    }
+
+    override fun onEvaluateInputViewShown(): Boolean {
+        return latinIMELegacy.onEvaluateInputViewShown()
+                || super.onEvaluateInputViewShown()
+                || !getSetting(HideKeyboardWhenHardKeyboardConnected)
+    }
+
+    override fun onEvaluateFullscreenMode(): Boolean {
+        // TODO: Revisit fullscreen mode
+        return false //latinIMELegacy.onEvaluateFullscreenMode(super.onEvaluateFullscreenMode())
+    }
+
+    override fun updateFullscreenMode() {
+        super.updateFullscreenMode()
+        latinIMELegacy.updateFullscreenMode()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return latinIMELegacy.onKeyDown(keyCode, event) || super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        return latinIMELegacy.onKeyUp(keyCode, event) || super.onKeyUp(keyCode, event)
+    }
+
+    override fun updateVisibility(shouldShowSuggestionsStrip: Boolean, fullscreenMode: Boolean) {
+        uixManager.updateVisibility(shouldShowSuggestionsStrip, fullscreenMode)
+    }
+
+    override fun setSuggestions(
+        suggestedWords: SuggestedWords,
+        rtlSubtype: Boolean,
+        cfg: ExpandableSuggestionBarConfiguration
+    ) {
+        uixManager.setSuggestions(suggestedWords, rtlSubtype, cfg)
+
+        // Cache the auto-correction in accessibility code so we can speak it if the user
+        // touches a key that will insert it.
+        AccessibilityUtils.getInstance().setAutoCorrection(suggestedWords)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        uixManager.cleanUpPersistentStates()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        uixManager.cleanUpPersistentStates()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    override fun onCreateInlineSuggestionsRequest(uiExtras: Bundle): InlineSuggestionsRequest? {
+        return createInlineSuggestionsRequest(this, colorScheme)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    override fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
+        return uixManager.onInlineSuggestionsResponse(response)
+    }
+
+    fun requestForgetWord(suggestedWordInfo: SuggestedWordInfo) {
+        uixManager.requestForgetWord(suggestedWordInfo)
+    }
+
+    fun blacklistWord(suggestedWordInfo: SuggestedWordInfo?) = lifecycleScope.launch {
+        val word = suggestedWordInfo?.mWord
+        if(word != null) {
+            SuggestionBlacklist.addToBlacklistSetting(this@LatinIME, word)
+
+            val settings = Settings.getInstance().current
+            imeManager.getActiveIME(settings).let { ime ->
+                if (ime is WordLearner) {
+                    SuggestionBlacklist.getCapitalVariants(word, settings.mLocale).forEach {
+                        ime.removeFromHistory(
+                            it,
+                            NgramContext.EMPTY_PREV_WORDS_INFO,
+                            -1,
+                            Constants.NOT_A_CODE
+                        )
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    ime.requestSuggestionRefresh()
+                }
+            }
         }
     }
 
-    private fun addRowAlignLeft(idx: Int, row: List<LayoutEntry>, y: Int, height: Int)
-            = addRow(idx, row, 0.0f, y, height)
-
-    private fun addRowAlignRight(idx: Int, row: List<LayoutEntry>, y: Int, height: Int) {
-        val startingOffset = params.mId.mWidth - row.sumOf { it.widthPx.toDouble() }.toFloat()
-        addRow(idx, row, startingOffset, y, height)
-    }
-
-    private fun addRow(idx: Int, row: LayoutRow, y: Int) {
-        if(isSplitLayout && row.splittable) {
-            val splitRows = row.entries.splitRow()
-
-            addRowAlignLeft(idx, splitRows.first,   y, row.height.toInt())
-            addRowAlignRight(idx, splitRows.second, y, row.height.toInt())
-        } else {
-            addRowAlignLeft(idx, row.entries, y, row.height.toInt())
+    fun rememberEmojiSuggestion(suggestion: SuggestedWordInfo) {
+        if(suggestion.mKindAndFlags == SuggestedWordInfo.KIND_EMOJI_SUGGESTION) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.Default) {
+                    useEmoji(suggestion.mWord)
+                }
+            }
         }
     }
 
-    private fun addKeys(rows: List<LayoutRow>): Int {
-        var currentY = 0.0f
-        rows.forEachIndexed { i, row ->
-            addRow(i, row, currentY.toInt())
-            currentY += row.height
-        }
+    private var overrideInputConnection: InputConnection? = null
+    private var overrideEditorInfo: EditorInfo? = null
+    fun overrideInputConnection(to: InputConnection?, editorInfo: EditorInfo?) {
+        if(to == this.overrideInputConnection && editorInfo == overrideEditorInfo) return
 
-        return currentY.roundToInt()
+        imeManager.onFinishInput()
+        this.overrideInputConnection = to
+        this.overrideEditorInfo = editorInfo
+
+        latinIMELegacy.loadSettings()
+
+        imeManager.onStartInput()
+
+        val currentIC = currentInputConnection
+        currentIC?.requestCursorUpdates(InputConnection.CURSOR_UPDATE_IMMEDIATE)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            super.getCurrentInputConnection()?.setImeConsumesInput(to != null)
+        }
     }
 
-    fun build(): org.futo.inputmethod.keyboard.Keyboard {
-        params.mMoreKeysTemplate = R.xml.kbd_more_keys_keyboard_template
-        params.mMaxMoreKeysKeyboardColumn = 5
+    val isInputConnectionOverridden
+        get() = overrideInputConnection != null
 
-        params.GRID_WIDTH = context.resources.getInteger(R.integer.config_keyboard_grid_width)
-        params.GRID_HEIGHT = context.resources.getInteger(R.integer.config_keyboard_grid_height)
+    val inputConnectionOverridenWithSuggestions
+        get() = isInputConnectionOverridden && overrideEditorInfo?.let {
+            !it.privateImeOptions.contains("org.futo.inputmethod.latin.NoSuggestions=1")
+        } ?: false
 
-        val rows = computeRows(this.rows)
-
-        val totalKeyboardHeight = addKeys(rows).let { totalRowHeight.roundToInt() } + layoutParams.size.padding.bottom
-
-        params.mOccupiedHeight = totalKeyboardHeight - verticalGapPx.roundToInt()
-        params.mOccupiedWidth = params.mId.mWidth
-        params.mTopPadding    = 0
-        params.mBottomPadding = layoutParams.size.padding.bottom
-        params.mLeftPadding   = 0
-        params.mRightPadding  = 0
-
-        params.mBaseWidth = params.mOccupiedWidth
-        params.mDefaultKeyWidth = regularKeyWidth.roundToInt()
-        params.mHorizontalGap = 0
-        params.mVerticalGap = 0
-        params.mBaseHeight = totalKeyboardHeight
-        params.mDefaultRowHeight = rowHeightPx.roundToInt()
-        params.mAutoShift = keyboard.autoShift
-
-        try {
-            val provider = DynamicThemeProvider.obtainFromContext(context)
-            params.mIconsSet.loadIcons(null, provider)
-        } catch(_: IllegalArgumentException) {
-            Log.w("LayoutEngine", "Unable to load icons, this may cause an exception if it's used later")
-        }
-
-        params.mThemeId = 3
-        params.mTextsSet.setLocale(params.mId.locale, context)
-
-        params.mProximityCharsCorrectionEnabled = true
-
-        params.mAllowRedundantMoreKeys = true
-        params.removeRedundantMoreKeys()
-
-        params.mMostCommonKeyWidth = regularKeyWidth.roundToInt()
-
-        return org.futo.inputmethod.keyboard.Keyboard(params)
+    override fun getCurrentInputConnection(): InputConnection? {
+        return overrideInputConnection ?: super.getCurrentInputConnection()
     }
+
+    override fun getCurrentInputEditorInfo(): EditorInfo? {
+        return overrideEditorInfo ?: super.getCurrentInputEditorInfo()
+    }
+
+    fun getBaseInputConnection(): InputConnection? {
+        return super.getCurrentInputConnection()
+    }
+
+    fun getBaseInputEditorInfo(): EditorInfo? {
+        return super.getCurrentInputEditorInfo()
+    }
+
+    private fun onDeviceUnlocked() {
+        forceUnlockDatastore(this)
+
+        Log.i("LatinIME", "Device has been unlocked, reloading settings")
+
+        // Every place that called getDefaultSharedPreferences now needs to be refreshed or call it again
+        UserBinaryDictionary.resetUserDictionariesRequiringRecreation()
+
+        // Mainly Settings singleton needs to be refreshed
+        Settings.init(applicationContext)
+        Settings.getInstance().onSharedPreferenceChanged(null /* unused */, "")
+        latinIMELegacy.loadSettings()
+        recreateKeyboard()
+
+        imeManager.onDeviceUnlocked()
+
+        uixManager.onPersistentStatesUnlocked()
+
+        CanThrowIfDebug = true
+
+        // TODO: Spell checker service
+    }
+
+    override val foldState: FoldingOptions
+        get() = uixManager.foldingOptions.value
+
+    override val currentSizeState: KeyboardSizeSettingKind
+        get() = when {
+            (foldState.feature != null && isFoldableInnerDisplayAllowed()) ->
+                KeyboardSizeSettingKind.FoldableInnerDisplay
+
+            resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE ->
+                KeyboardSizeSettingKind.Landscape
+
+            else ->
+                KeyboardSizeSettingKind.Portrait
+        }
 }
