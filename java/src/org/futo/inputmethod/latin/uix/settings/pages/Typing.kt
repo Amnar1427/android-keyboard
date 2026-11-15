@@ -1,1813 +1,1086 @@
-package org.futo.inputmethod.latin.uix
+package org.futo.inputmethod.latin.uix.settings.pages
 
-import android.content.ClipDescription
 import android.content.Context
-import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Rect
-import android.graphics.Typeface
-import android.net.Uri
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.util.Log
-import android.view.KeyEvent
-import android.view.View
-import android.view.WindowManager
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InlineSuggestionsResponse
-import android.view.inputmethod.InputConnection
-import android.widget.Toast
-import androidx.annotation.RequiresApi
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Canvas
+import android.media.AudioManager
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.absoluteOffset
-import androidx.compose.foundation.layout.absolutePadding
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalTextInputService
+import androidx.compose.ui.res.booleanResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.coerceAtLeast
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.input.ImeOptions
+import androidx.compose.ui.text.input.PlatformImeOptions
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TextInputSession
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.view.inputmethod.InputConnectionCompat
-import androidx.core.view.inputmethod.InputContentInfoCompat
-import androidx.lifecycle.LifecycleCoroutineScope
-import androidx.lifecycle.lifecycleScope
+import androidx.compose.ui.zIndex
+import androidx.core.graphics.drawable.toBitmap
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.navigation.NavHostController
-import androidx.window.layout.FoldingFeature
-import androidx.window.layout.WindowInfoTracker
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.delay
 import org.futo.inputmethod.accessibility.AccessibilityUtils
-import org.futo.inputmethod.engine.ExpandableSuggestionBarConfiguration
-import org.futo.inputmethod.engine.IMEInterface
-import org.futo.inputmethod.engine.NonExpandableSuggestionBar
-import org.futo.inputmethod.event.Event
-import org.futo.inputmethod.latin.AudioAndHapticFeedbackManager
-import org.futo.inputmethod.latin.BuildConfig
-import org.futo.inputmethod.latin.FoldingOptions
-import org.futo.inputmethod.latin.LanguageSwitcherDialog
-import org.futo.inputmethod.latin.LatinIME
+import org.futo.inputmethod.engine.IMESettingsMenu
+import org.futo.inputmethod.latin.HideKeyboardWhenHardKeyboardConnected
 import org.futo.inputmethod.latin.R
-import org.futo.inputmethod.latin.RichInputMethodManager
-import org.futo.inputmethod.latin.SuggestedWords
-import org.futo.inputmethod.latin.SuggestedWords.SuggestedWordInfo
-import org.futo.inputmethod.latin.SupportsNavbarExtension
-import org.futo.inputmethod.latin.common.Constants
+import org.futo.inputmethod.latin.settings.LongPressKey
+import org.futo.inputmethod.latin.settings.LongPressKeyLayoutSetting
 import org.futo.inputmethod.latin.settings.Settings
-import org.futo.inputmethod.latin.suggestions.SuggestionStripViewListener
-import org.futo.inputmethod.latin.uix.actions.ActionEditor
-import org.futo.inputmethod.latin.uix.actions.ActionRegistry
-import org.futo.inputmethod.latin.uix.actions.AllActions
-import org.futo.inputmethod.latin.uix.actions.BugViewerAction
-import org.futo.inputmethod.latin.uix.actions.BugViewerState
-import org.futo.inputmethod.latin.uix.actions.KeyboardModeAction
-import org.futo.inputmethod.latin.uix.actions.PersistentEmojiState
-import org.futo.inputmethod.latin.uix.actions.keyCode
-import org.futo.inputmethod.latin.uix.actions.keyCodeAlt
-import org.futo.inputmethod.latin.uix.resizing.KeyboardResizers
-import org.futo.inputmethod.latin.uix.settings.DataStoreCacheProvider
-import org.futo.inputmethod.latin.uix.settings.pages.ActionBarDisplayedSetting
-import org.futo.inputmethod.latin.uix.settings.pages.InlineAutofillSetting
-import org.futo.inputmethod.latin.uix.settings.pages.centerCursorTrackpadSetting
+import org.futo.inputmethod.latin.settings.Settings.PREF_KEYPRESS_SOUND_VOLUME
+import org.futo.inputmethod.latin.settings.Settings.PREF_VIBRATION_DURATION_SETTINGS
+import org.futo.inputmethod.latin.settings.description
+import org.futo.inputmethod.latin.settings.name
+import org.futo.inputmethod.latin.settings.toEncodedString
+import org.futo.inputmethod.latin.settings.toLongPressKeyLayoutItems
+import org.futo.inputmethod.latin.uix.AndroidTextInput
+import org.futo.inputmethod.latin.uix.BasicThemeProvider
+import org.futo.inputmethod.latin.uix.KeyHintsSetting
+import org.futo.inputmethod.latin.uix.LocalKeyboardScheme
+import org.futo.inputmethod.latin.uix.SHOW_EMOJI_SUGGESTIONS
+import org.futo.inputmethod.latin.uix.SettingsKey
+import org.futo.inputmethod.latin.uix.getSettingBlocking
+import org.futo.inputmethod.latin.uix.setSettingBlocking
+import org.futo.inputmethod.latin.uix.settings.BottomSpacer
+import org.futo.inputmethod.latin.uix.settings.DataStoreItem
+import org.futo.inputmethod.latin.uix.settings.DropDownPickerSettingItem
+import org.futo.inputmethod.latin.uix.settings.LocalSharedPrefsCache
+import org.futo.inputmethod.latin.uix.settings.NavigationItemStyle
+import org.futo.inputmethod.latin.uix.settings.PrimarySettingToggleDataStoreItem
+import org.futo.inputmethod.latin.uix.settings.ScreenTitle
+import org.futo.inputmethod.latin.uix.settings.ScrollableList
+import org.futo.inputmethod.latin.uix.settings.SettingItem
+import org.futo.inputmethod.latin.uix.settings.SettingRadio
+import org.futo.inputmethod.latin.uix.settings.SettingSlider
+import org.futo.inputmethod.latin.uix.settings.SettingSliderSharedPrefsInt
+import org.futo.inputmethod.latin.uix.settings.SettingToggleRaw
+import org.futo.inputmethod.latin.uix.settings.SyncDataStoreToPreferencesFloat
+import org.futo.inputmethod.latin.uix.settings.SyncDataStoreToPreferencesInt
+import org.futo.inputmethod.latin.uix.settings.Tip
+import org.futo.inputmethod.latin.uix.settings.UserSetting
+import org.futo.inputmethod.latin.uix.settings.UserSettingsMenu
+import org.futo.inputmethod.latin.uix.settings.render
 import org.futo.inputmethod.latin.uix.settings.useDataStore
-import org.futo.inputmethod.latin.uix.theme.KeyboardSurfaceShaderBackground
+import org.futo.inputmethod.latin.uix.settings.useSharedPrefsBool
+import org.futo.inputmethod.latin.uix.settings.useSharedPrefsInt
+import org.futo.inputmethod.latin.uix.settings.userSettingDecorationOnly
+import org.futo.inputmethod.latin.uix.settings.userSettingNavigationItem
+import org.futo.inputmethod.latin.uix.settings.userSettingToggleDataStore
+import org.futo.inputmethod.latin.uix.settings.userSettingToggleSharedPrefs
 import org.futo.inputmethod.latin.uix.theme.Typography
-import org.futo.inputmethod.latin.uix.theme.UixThemeAuto
-import org.futo.inputmethod.latin.uix.theme.UixThemeWrapper
-import org.futo.inputmethod.updates.autoDeferManualUpdateIfNeeded
-import org.futo.inputmethod.updates.deferManualUpdate
-import org.futo.inputmethod.updates.isManualUpdateTimeExpired
-import org.futo.inputmethod.updates.openManualUpdateCheck
-import org.futo.inputmethod.updates.retrieveSavedLastUpdateCheckResult
-import org.futo.inputmethod.v2keyboard.ComputedKeyboardSize
-import org.futo.inputmethod.v2keyboard.getPrimaryLayoutOverride
-import org.futo.inputmethod.v2keyboard.FloatingKeyboardSize
-import org.futo.inputmethod.v2keyboard.KeyboardSizingCalculator
-import org.futo.inputmethod.v2keyboard.OneHandedDirection
-import org.futo.inputmethod.v2keyboard.OneHandedKeyboardSize
-import org.futo.inputmethod.v2keyboard.RegularKeyboardSize
-import org.futo.inputmethod.v2keyboard.SplitKeyboardSize
-import org.futo.inputmethod.v2keyboard.opposite
-import java.util.Locale
+import org.futo.inputmethod.v2keyboard.KeyboardSettings
+import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
+import kotlin.math.sign
 
-val LocalManager = staticCompositionLocalOf<KeyboardManagerForAction> {
-    error("No LocalManager provided")
-}
-
-val LocalThemeProvider = compositionLocalOf<DynamicThemeProvider> {
-    error("No LocalThemeProvider provided")
-}
-
-val LocalFoldingState = compositionLocalOf<FoldingOptions> {
-    FoldingOptions(null)
-}
-
-val LocalNavController = compositionLocalOf<NavHostController?> {
-    null
-}
-
-private val UixLocaleFollowsSubtypeLocale = true
-
-@Composable
-fun navBarHeight(): Dp = with(LocalDensity.current) {
-    if(SupportsNavbarExtension) {
-        WindowInsets.systemBars.getBottom(this).toDp()
-    } else {
-        0.dp
-    }
-}
-
-
-data class KeyboardPadding(
-    val left: Dp,
-    val right: Dp
+val vibrationDurationSetting = SettingsKey(
+    intPreferencesKey("vibration_duration"),
+    -1
 )
 
-val LocalKeyboardPadding = compositionLocalOf {
-    KeyboardPadding(0.dp, 0.dp)
-}
-
-@Composable
-fun Modifier.safeKeyboardPadding(): Modifier {
-    val padding = LocalKeyboardPadding.current
-
-    return this.absolutePadding(left = padding.left.coerceAtLeast(0.dp), right = padding.right.coerceAtLeast(0.dp))
-}
-
-@Composable
-fun Modifier.keyboardBottomPadding(size: ComputedKeyboardSize): Modifier = with(LocalDensity.current) {
-    this@keyboardBottomPadding.absolutePadding(bottom = size.padding.bottom.toDp())
-}
-
-@Composable
-fun BoxScope.KeyboardBackground(
-    colorScheme: KeyboardColorScheme,
-    computedSize: ComputedKeyboardSize? = null,
-    useThumbnail: Boolean = false,
-) {
-    val backgroundBrush = colorScheme.keyboardBackgroundGradient ?: SolidColor(colorScheme.keyboardSurface)
-    val advanced = colorScheme.extended.advancedThemeOptions
-
-    val shader = advanced.backgroundShader
-    val image = if(useThumbnail) advanced.thumbnailImage else advanced.backgroundImage
-    val rect = advanced.backgroundImageVisibleArea?.let {
-        if(useThumbnail) {
-            Rect(
-                (it.left * advanced.thumbnailScale).roundToInt(),
-                (it.top * advanced.thumbnailScale).roundToInt(),
-                (it.right * advanced.thumbnailScale).roundToInt(),
-                (it.bottom * advanced.thumbnailScale).roundToInt()
-            )
-        } else it
-    }
-
-    when {
-        shader != null -> KeyboardSurfaceShaderBackground(shader, modifier = Modifier.matchParentSize())
-        image != null && rect != null -> {
-            val navbarHeight = navBarHeight()
-            Canvas(Modifier.matchParentSize()) {
-                drawRect(colorScheme.keyboardSurface)
-
-                val fixedWidth = computedSize?.width?.toFloat() ?: size.width
-                val fixedHeight = when {
-                    (computedSize != null) -> computedSize.height + ActionBarHeight.toPx() + navbarHeight.toPx()
-                    else -> size.height
-                }
-
-                val canvasScale = maxOf(fixedWidth / rect.width(), fixedHeight / rect.height())
-
-                val offset = Offset(
-                    -rect.left*1f - rect.width()/2f + fixedWidth/2f/canvasScale,
-                    -rect.top*1f - rect.height()/2f + fixedHeight/2f/canvasScale
-                )
-
-                translate(0f, size.height - fixedHeight) {
-                    scale(canvasScale, pivot = Offset.Zero) {
-                        translate(offset.x, offset.y) {
-                            drawImage(image)
-                        }
-                    }
-                }
-            }
-
-            Box(Modifier
-                .matchParentSize()
-                .background(backgroundBrush))
-        }
-        else -> Box(Modifier
-            .background(backgroundBrush)
-            .matchParentSize())
-    }
-}
-
-class UixActionKeyboardManager(val uixManager: UixManager, val latinIME: LatinIME) : KeyboardManagerForAction {
-    override fun getContext(): Context {
-        return latinIME
-    }
-
-    override fun getLifecycleScope(): LifecycleCoroutineScope {
-        return latinIME.lifecycleScope
-    }
-
-    override fun createInputTransaction(): ActionInputTransaction {
-        return latinIME.imeManager.createInputTransaction()
-    }
-
-    override fun typeText(v: String) {
-        if(latinIME.isInputConnectionOverridden) {
-            latinIME.getBaseInputConnection()?.commitText(v, 1)
-        } else {
-            latinIME.latinIMELegacy.onTextInput(v)
-        }
-    }
-
-    override fun typeTextSurroundedByWhitespace(v: String) {
-        if(latinIME.isInputConnectionOverridden) {
-            latinIME.getBaseInputConnection()?.commitText(v, 1)
-        } else {
-            latinIME.latinIMELegacy.onTextInputWithSpace(v)
-        }
-    }
-
-    override fun typeUri(
-        uri: Uri,
-        mimeTypes: List<String>,
-        ignoreConnectionOverride: Boolean
-    ): Boolean {
-        if(mimeTypes.isEmpty()) {
-            Log.w("UixManager", "mimeTypes is empty")
-            return false
-        }
-
-        val inputConnection = if(ignoreConnectionOverride) {
-            latinIME.getBaseInputConnection()
-        } else {
-            latinIME.currentInputConnection
-        }
-
-        val editorInfo = if(ignoreConnectionOverride) {
-            latinIME.getBaseInputEditorInfo()
-        } else {
-            latinIME.currentInputEditorInfo
-        }
-
-        if(inputConnection == null || editorInfo == null) return false
-
-        latinIME.grantUriPermission(
-            editorInfo.packageName,
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION
-        )
-
-        val description = ClipDescription("", mimeTypes.toTypedArray())
-
-        return InputConnectionCompat.commitContent(
-            inputConnection,
-            editorInfo,
-            InputContentInfoCompat(uri, description, null),
-            InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
-            null
-        ).let { result ->
-            if(!result) {
-                val toast = Toast.makeText(
-                    latinIME,
-                    latinIME.getString(R.string.action_clipboard_manager_error_app_image_insertion_unsupported),
-                    Toast.LENGTH_SHORT
-                )
-                toast.show()
-            }
-
-            result
-        }
-    }
-
-    private fun mimeTypeMatches(mimeTypePattern: String, schema: String): Boolean {
-        if (mimeTypePattern == schema) return true
-        val patternParts = mimeTypePattern.split('/')
-        val schemaParts = schema.split('/')
-        if (patternParts.size != 2 || schemaParts.size != 2) return false
-        return (patternParts[0] == schemaParts[0] &&
-                (patternParts[1] == "*" || patternParts[1] == schemaParts[1]))
-    }
-
-    override fun appSupportsImageInsertion(
-        schema: String,
-        ignoreConnectionOverride: Boolean
-    ): Boolean {
-        val editorInfo = if(ignoreConnectionOverride) {
-            latinIME.getBaseInputEditorInfo()
-        } else {
-            latinIME.currentInputEditorInfo
-        }
-
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
-            editorInfo?.contentMimeTypes?.any { mimeTypeMatches(it, schema) } == true
-        } else {
-            false
-        }
-    }
-
-    override fun backspace(amount: Int) {
-        for(i in 0 until amount) {
-            latinIME.latinIMELegacy.onCodeInput(
-                Constants.CODE_DELETE,
-                Constants.NOT_A_COORDINATE,
-                Constants.NOT_A_COORDINATE, false
-            )
-        }
-    }
-
-    override fun closeActionWindow() {
-        uixManager.closeActionWindow()
-    }
-
-    override fun forceActionWindowAboveKeyboard(to: Boolean) {
-        uixManager.toggleExpandAction(to)
-    }
-
-    override fun triggerSystemVoiceInput() {
-        latinIME.latinIMELegacy.onCodeInput(
-            Constants.CODE_SHORTCUT,
-            Constants.SUGGESTION_STRIP_COORDINATE,
-            Constants.SUGGESTION_STRIP_COORDINATE,
-            false
-        )
-    }
-
-    override fun getThemeProvider(): DynamicThemeProvider {
-        return latinIME.getDrawableProvider()
-    }
-
-    override fun sendCodePointEvent(codePoint: Int) {
-        latinIME.latinIMELegacy.onCodeInput(codePoint,
-            Constants.NOT_A_COORDINATE,
-            Constants.NOT_A_COORDINATE, false)
-    }
-
-    override fun sendKeyEvent(keyCode: Int, metaState: Int) {
-        val event = Event.createDownUpKeyEvent(keyCode, metaState)
-        latinIME.imeManager.getActiveIME(
-            Settings.getInstance().current
-        ).onEvent(event)
-        //latinIME.inputLogic.sendDownUpKeyEvent(keyCode, metaState)
-    }
-
-    override fun isShifted(): Boolean = latinIME.latinIMELegacy.mKeyboardSwitcher.mState.shifted
-
-    override fun cursorLeft(steps: Int, stepOverWords: Boolean, select: Boolean) {
-        latinIME.imeManager.getActiveIME(
-            Settings.getInstance().current
-        ).onMovePointer(-1, stepOverWords, select)
-        //latinIME.inputLogic.cursorLeft(steps, stepOverWords, select)
-    }
-
-    override fun cursorRight(steps: Int, stepOverWords: Boolean, select: Boolean) {
-        latinIME.imeManager.getActiveIME(
-            Settings.getInstance().current
-        ).onMovePointer( 1, stepOverWords, select)
-        //latinIME.inputLogic.cursorRight(steps, stepOverWords, select)
-    }
-
-    override fun performHapticAndAudioFeedback(code: Int, view: View) {
-        AudioAndHapticFeedbackManager.getInstance().performHapticAndAudioFeedback(code, view)
-    }
-
-    override fun getActiveLocales(): List<Locale> {
-        return RichInputMethodManager.getInstance().currentSubtypeLocales
-    }
-
-    override fun overrideInputConnection(inputConnection: InputConnection, editorInfo: EditorInfo) {
-        latinIME.overrideInputConnection(inputConnection, editorInfo)
-        uixManager.toggleExpandAction(true)
-        uixManager.isInputOverridden.value = true
-    }
-
-    override fun unsetInputConnection(): Boolean {
-        val wasOverridden = uixManager.isInputOverridden.value
-        latinIME.overrideInputConnection(null, null)
-        uixManager.isInputOverridden.value = false
-        return wasOverridden
-    }
-
-    override fun requestDialog(text: String, options: List<DialogRequestItem>, onCancel: () -> Unit) {
-        uixManager.activeDialogRequest.value = ActiveDialogRequest(text, options, onCancel)
-        uixManager.activeDialogRequestDismissed.value = false
-    }
-
-    override fun openInputMethodPicker() {
-        uixManager.showLanguageSwitcher()
-    }
-
-    override fun announce(s: String) {
-        AccessibilityUtils.init(getContext())
-        if(AccessibilityUtils.getInstance().isAccessibilityEnabled && uixManager.composeView != null) {
-            AccessibilityUtils.getInstance().announceForAccessibility(uixManager.composeView, s)
-        }
-    }
-
-    override fun activateAction(action: Action) {
-        uixManager.onActionActivated(action)
-    }
-
-    override fun showActionEditor() {
-        uixManager.showActionEditor()
-    }
-
-    override fun showResizer() {
-        uixManager.resizers.displayResizer()
-
-        if(uixManager.currWindowAction != KeyboardModeAction) {
-            uixManager.closeActionWindow()
-        }
-    }
-
-    override fun getTutorialMode(): TutorialMode {
-        return uixManager.tutorialMode
-    }
-
-    override fun setTutorialArrowPosition(coordinates: LayoutCoordinates) {
-        uixManager.tutorialArrowPosition.value = coordinates
-    }
-
-    override fun markTutorialCompleted() {
-        uixManager.tutorialCompleted.value = true
-    }
-
-    override fun isDeviceLocked(): Boolean {
-        return getContext().isDeviceLocked
-    }
-
-    override fun overrideKeyboardTypeface(typeface: Typeface?) {
-        if(latinIME.getDrawableProvider().typefaceOverride == typeface) return
-        latinIME.getDrawableProvider().typefaceOverride = typeface
-        latinIME.invalidateKeyboard()
-    }
-
-    override fun copyToClipboard(cut: Boolean) {
-        if(cut) {
-            sendKeyEvent(KeyEvent.KEYCODE_X, KeyEvent.META_CTRL_ON)
-        } else {
-            sendKeyEvent(KeyEvent.KEYCODE_C, KeyEvent.META_CTRL_ON)
-        }
-    }
-
-    override fun pasteFromClipboard() {
-        sendKeyEvent(KeyEvent.KEYCODE_V, KeyEvent.META_CTRL_ON)
-        uixManager.dismissQuickClips()
-    }
-
-    override fun getSizingCalculator(): KeyboardSizingCalculator =
-        latinIME.sizingCalculator
-
-    override fun getLatinIMEForDebug(): LatinIME = latinIME
-
-    override fun getCurrentIME(): IMEInterface {
-        return latinIME.imeManager.getActiveIME(Settings.getInstance().current)
-    }
-}
-
-data class ActiveDialogRequest(
-    val text: String,
-    val options: List<DialogRequestItem>,
-    val onCancel: () -> Unit
+val keySoundVolumeSetting = SettingsKey(
+    floatPreferencesKey("key_sound_volume"),
+    0.0f
 )
 
-@RequiresOptIn(level = RequiresOptIn.Level.ERROR, message = "This is for debug purposes only.")
-@Retention(AnnotationRetention.BINARY)
-annotation class DebugOnly
+val ActionBarDisplayedSetting = SettingsKey(
+    booleanPreferencesKey("enable_action_bar"),
+    true
+)
 
-@DebugOnly
-var UixManagerInstanceForDebug: UixManager? = null
+val InlineAutofillSetting = SettingsKey(
+    booleanPreferencesKey("inline_autofill"),
+    true
+)
 
-class UixManager(private val latinIME: LatinIME) {
-    init {
-        @OptIn(DebugOnly::class)
-        UixManagerInstanceForDebug = this
-    }
+val spacebarWidthScaleSetting = SettingsKey(
+    floatPreferencesKey("spacebar_width_scale"),
+    1.0f
+)
 
-    internal val composeView: ComposeView?
-        get() = latinIME.composeView
+val centerCursorTrackpadSetting = SettingsKey(
+    booleanPreferencesKey("center_cursor_trackpad"),
+    true
+)
 
-    private val suggestionStripListener = object : SuggestionStripViewListener {
-        override fun showImportantNoticeContents() {
-            latinIME.latinIMELegacy.showImportantNoticeContents()
-        }
-
-        override fun pickSuggestionManually(word: SuggestedWordInfo?) {
-            if(floatingPreeditEditing.value && floatingPreedit.value != null) {
-                val text = floatingPreeditText.value
-
-                keyboardManagerForAction.unsetInputConnection()
-
-                floatingPreedit.value?.let { preedit ->
-                    preedit.listener.onFinishEdit(preedit.untransform(text), word?.word, word?.mCandidateIndex)
+val ResizeMenuLite = UserSettingsMenu(
+    title = R.string.size_settings_title,
+    navPath = "resize", registerNavPath = false,
+    settings = listOf(
+        userSettingNavigationItem(
+            title = R.string.size_settings_reset,
+            subtitle = R.string.size_settings_reset_subtitle,
+            style = NavigationItemStyle.Misc,
+            icon = R.drawable.close,
+            navigate = { nav ->
+                KeyboardSettings.values.forEach {
+                    nav.context.setSettingBlocking(it.key, it.default)
                 }
-
-                floatingPreeditEditing.value = false
-                floatingPreeditText.value = ""
-            } else {
-                latinIME.latinIMELegacy.pickSuggestionManually(word)
             }
-        }
-
-        override fun requestForgetWord(word: SuggestedWordInfo?) {
-            latinIME.latinIMELegacy.requestForgetWord(word)
-        }
-
-        override fun onCodeInput(
-            primaryCode: Int,
-            x: Int,
-            y: Int,
-            isKeyRepeat: Boolean
-        ) {
-            latinIME.latinIMELegacy.onCodeInput(primaryCode, x, y, isKeyRepeat)
-        }
-
-    }
-
-    private val shouldShowSuggestionStrip = mutableStateOf(true)
-    private val suggestedWords: MutableState<SuggestedWords?> = mutableStateOf(null)
-    private val expandableSuggestionCfg: MutableState<ExpandableSuggestionBarConfiguration> = mutableStateOf(
-        NonExpandableSuggestionBar
+        )
     )
+)
 
-    var currWindowAction: MutableState<Action?> = mutableStateOf(null)
-    private var persistentStates: HashMap<Action, PersistentActionState?> = hashMapOf()
+@OptIn(ExperimentalLayoutApi::class)
+@Preview(showBackground = true)
+@Composable
+fun ResizeScreen(navController: NavHostController = rememberNavController()) {
+    val textInputService = LocalTextInputService.current
+    val session = remember { mutableStateOf<TextInputSession?>(null) }
 
-    private var inlineSuggestions: MutableState<List<MutableState<View?>>> = mutableStateOf(emptyList())
-    private val keyboardManagerForAction = UixActionKeyboardManager(this, latinIME)
+    DisposableEffect(Unit) {
+        session.value = textInputService?.startInput(
+            TextFieldValue(""),
+            imeOptions = ImeOptions.Default.copy(
+                platformImeOptions = PlatformImeOptions(
+                    privateImeOptions = "org.futo.inputmethod.latin.ResizeMode=1"
+                )
+            ),
+            onEditCommand = { },
+            onImeActionPerformed = { }
+        )
 
-    private var mainKeyboardHidden = mutableStateOf(false)
-
-    fun getCurrentLayoutName(): String =
-        getPrimaryLayoutOverride(latinIME.currentInputEditorInfo)
-            ?: latinIME.latinIMELegacy.mKeyboardSwitcher.keyboard?.mId?.mKeyboardLayoutSetName
-            ?: "qwerty"
-
-    private var numSuggestionsSinceNotice = 0
-    private var currentNotice: MutableState<ImportantNotice?> = mutableStateOf(null)
-
-    private var inlineStuffHiddenByTyping = mutableStateOf(false)
-
-    private var isActionsExpanded = mutableStateOf(false)
-    private fun toggleActionsExpanded() {
-        isActionsExpanded.value = !isActionsExpanded.value
-        latinIME.deferSetSetting(latinIME, ActionBarExpanded, isActionsExpanded.value)
-    }
-
-
-    val actionsExpanded: Boolean
-        get() = isActionsExpanded.value
-
-    internal val resizers = KeyboardResizers(latinIME)
-
-    private var isShowingActionEditor = mutableStateOf(false)
-    fun showActionEditor() {
-        isShowingActionEditor.value = true
-    }
-
-    val foldingOptions = mutableStateOf(FoldingOptions(null))
-    val floatingPreedit = mutableStateOf<FloatingPreEdit?>(null)
-    val floatingPreeditPosition = mutableStateOf<LayoutCoordinates?>(null)
-    val floatingPreeditHeight = mutableStateOf<Int>(0)
-    val floatingPreeditEditing = mutableStateOf(false)
-    val floatingPreeditText = mutableStateOf("")
-
-    var isInputOverridden = mutableStateOf(false)
-
-    var currWindowActionWindow: MutableState<ActionWindow?> = mutableStateOf(null)
-
-    private var measuredTouchableHeight = 0
-    val touchableHeight: Int
-        get() = measuredTouchableHeight
-
-    val isMainKeyboardHidden get() = mainKeyboardHidden.value
-
-    private fun onActionActivatedInternal(rawAction: Action) {
-        resizers.hideResizer()
-
-        val action = runBlocking {
-            ActionRegistry.getActionOverride(latinIME, rawAction)
-        }
-
-        if (action.windowImpl != null) {
-            enterActionWindowView(action)
-        } else if (action.simplePressImpl != null) {
-            action.simplePressImpl.invoke(keyboardManagerForAction, persistentStates[action])
-        } else {
-            throw IllegalStateException("An action must have either a window implementation or a simple press implementation")
+        onDispose {
+            textInputService?.stopInput(session.value ?: return@onDispose)
         }
     }
 
-    private fun onActionAltActivatedInternal(rawAction: Action) {
-        val action = runBlocking {
-            ActionRegistry.getActionOverride(latinIME, rawAction)
-        }
+    Box {
+        ScrollableList {
+            ScreenTitle(stringResource(R.string.size_settings_title), showBack = true, navController)
 
-        action.altPressImpl?.invoke(keyboardManagerForAction, persistentStates[action])
-    }
+            PaymentSurface(
+                isPrimary = false,
+            ) {
+                PaymentSurfaceHeading(title = stringResource(R.string.settings_tip))
 
-    fun onActionActivated(rawAction: Action) {
-        val event = Event.createSoftwareKeypressEvent(Constants.NOT_A_CODE, rawAction.keyCode, 0, 0, false)
-        latinIME.imeManager.getActiveIME(
-            Settings.getInstance().current
-        ).onEvent(event)
-    }
-
-    fun onActionAltActivated(rawAction: Action) {
-        val event = Event.createSoftwareKeypressEvent(Constants.NOT_A_CODE, rawAction.keyCodeAlt, 0, 0, false)
-        latinIME.imeManager.getActiveIME(
-            Settings.getInstance().current
-        ).onEvent(event)
-    }
-
-    @Composable
-    private fun MainKeyboardViewWithActionBar(
-        needToUseExpandableSuggestionUi: Boolean
-    ) {
-        val view = LocalView.current
-
-        val actionBarShown = useDataStore(ActionBarDisplayedSetting)
-
-        Column {
-            // Don't show suggested words when it's not meant to be shown
-            val suggestedWordsOrNull = if(shouldShowSuggestionStrip.value) {
-                suggestedWords.value
-            } else {
-                null
-            }
-
-            val inlineSuggestions = run {
-                if(!inlineStuffHiddenByTyping.value) inlineSuggestions.value else emptyList()
-            }
-
-            if(actionBarShown.value || inlineSuggestions.isNotEmpty()) {
-                ActionBar(
-                    suggestedWordsOrNull,
-                    suggestionStripListener,
-                    inlineSuggestions = inlineSuggestions,
-                    onActionActivated = {
-                        keyboardManagerForAction.performHapticAndAudioFeedback(
-                            Constants.CODE_TAB,
-                            view
-                        )
-                        onActionActivated(it)
+                Text(
+                    buildAnnotatedString {
+                        append(stringResource(R.string.size_settings_keyboard_modes_tip))
+                        append(" ")
+                        appendInlineContent("icon")
+                        appendLine()
+                        append(stringResource(R.string.size_settings_keyboard_modes_portrait_landscape_tip))
+                        appendLine()
+                        append(stringResource(R.string.size_settings_resize_tip))
                     },
-                    onActionAltActivated = {
-                        if (it.altPressImpl != null) {
-                            keyboardManagerForAction.performHapticAndAudioFeedback(
-                                Constants.CODE_TAB,
-                                view
+                    style = Typography.Body.MediumMl,
+                    color = LocalContentColor.current,
+                    inlineContent = mapOf(
+                        "icon" to InlineTextContent(
+                            Placeholder(
+                                width = with(LocalDensity.current) { 24.dp.toPx().toSp() },
+                                height = with(LocalDensity.current) { 24.dp.toPx().toSp() },
+                                placeholderVerticalAlign = PlaceholderVerticalAlign.Center
                             )
+                        ){
+                            Icon(painterResource(R.drawable.keyboard_gear), contentDescription = null)
                         }
-                        onActionAltActivated(it)
-                    },
-                    importantNotice = currentNotice.value,
-                    keyboardManagerForAction = keyboardManagerForAction,
-                    isActionsExpanded = isActionsExpanded.value,
-                    toggleActionsExpanded = { toggleActionsExpanded() },
-                    quickClipState = run {
-                        if(!inlineStuffHiddenByTyping.value) quickClipState.value.filterIfDismissed()
-                            else null
-                    },
-                    onQuickClipDismiss = { quickClipState.value = null },
-                    needToUseExpandableSuggestionUi = needToUseExpandableSuggestionUi,
-                    loading = latinIME.imeManager.isImeLoading()
-                )
+                    ))
             }
+
+            Spacer(Modifier.height(8.dp))
+            ResizeMenuLite.render(showTitle = false)
+
+            AndroidTextInput(allowPredictions = false, customOptions = setOf("org.futo.inputmethod.latin.ResizeMode"), autoshow = false)
         }
     }
+}
 
-    private fun enterActionWindowView(action: Action) {
-        assert(action.windowImpl != null)
-
-        currWindowAction.value = action
-
-        if (persistentStates[action] == null) {
-            persistentStates[action] = action.persistentState?.let { it(keyboardManagerForAction) }
-        }
-
-        currWindowActionWindow.value = (action.windowImpl!!)(keyboardManagerForAction, persistentStates[action])
-
-        mainKeyboardHidden.value = currWindowActionWindow.value?.onlyShowAboveKeyboard == false
-
-        if(action.keepScreenAwake) {
-            latinIME.window.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
-
-        keyboardManagerForAction.announce(
-            latinIME.getString(
-                R.string.action_menu_opened,
-                latinIME.resources.getString(action.name)
-            ))
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DraggableSettingItem(idx: Int, item: LongPressKey, moveItem: (LongPressKey, Int) -> Unit, disable: (LongPressKey) -> Unit, dragIcon: @Composable () -> Unit, limits: IntRange) {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val talkBackOn = remember {
+        AccessibilityUtils.init(context)
+        AccessibilityUtils.getInstance().isAccessibilityEnabled
     }
 
-    private fun returnBackToMainKeyboardViewFromAction(allowSkipClosing: Boolean): Boolean {
-        if(currWindowActionWindow.value == null) return true
-
-        val name = latinIME.resources.getString(currWindowAction.value!!.name)
-
-        if(currWindowActionWindow.value!!.close() == CloseResult.PreventClosing
-            && allowSkipClosing
-        ) {
-            return false
-        }
-
-        currWindowAction.value = null
-        currWindowActionWindow.value = null
-
-        mainKeyboardHidden.value = false
-
-        latinIME.onKeyboardShown()
-
-        latinIME.window.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        keyboardManagerForAction.announce(latinIME.getString(R.string.action_menu_closed, name))
-        return true
-    }
-
-    fun toggleExpandAction(to: Boolean? = null) {
-        mainKeyboardHidden.value = !(to ?: mainKeyboardHidden.value)
-        if(!mainKeyboardHidden.value) {
-            latinIME.onKeyboardShown()
-        }
-    }
-
-    @Composable
-    private fun ActionViewWithHeader(windowImpl: ActionWindow,
-                                     needToUseExpandableSuggestionUi: Boolean) {
-        val heightDiv = if(mainKeyboardHidden.value) {
-            1
-        } else {
-            1.5
-        }
-
-        val showingAboveKeyboard = !mainKeyboardHidden.value
-        Column {
-            Column(
-                Modifier.background(
-                    if (showingAboveKeyboard) {
-                        LocalKeyboardScheme.current.keyboardSurfaceDim
-                    } else {
-                        Color.Transparent
+    val customActions = remember(idx, limits, item, resources) {
+        buildList {
+            if (idx > limits.first) {
+                add(
+                    CustomAccessibilityAction(
+                        resources.getString(R.string.morekey_settings_move_kind_up)
+                    ) {
+                        moveItem(item, -1)
+                        true
                     }
                 )
-            ) {
-                if (mainKeyboardHidden.value || isInputOverridden.value) {
-                    ActionWindowBar(
-                        onBack = { closeActionWindow(true) },
-                        canExpand = currWindowAction.value!!.canShowKeyboard,
-                        onExpand = { toggleExpandAction() },
-                        windowTitleBar = { windowImpl.WindowTitleBar(this) }
-                    )
-                }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(with(LocalDensity.current) {
-                            currWindowActionWindow.value?.fixedWindowHeight ?: ((latinIME
-                                .getInputViewHeight()
-                                .toFloat() / heightDiv.toFloat()).toDp() +
-                                    if (actionsExpanded) ActionBarHeight else 0.dp)
-                        })
-                        .safeKeyboardPadding()
+                add(
+                    CustomAccessibilityAction(
+                        resources.getString(R.string.morekey_settings_move_kind_up_to_top)
+                    ) {
+                        moveItem(item, -100)
+                        true
+                    }
+                )
+            }
+            if (idx < limits.last) {
+                add(
+                    CustomAccessibilityAction(
+                        resources.getString(R.string.morekey_settings_move_kind_down)
+                    ) {
+                        moveItem(item, 1)
+                        true
+                    }
+                )
+                add(
+                    CustomAccessibilityAction(
+                        resources.getString(R.string.morekey_settings_move_kind_down_to_bottom)
+                    ) {
+                        moveItem(item, 100)
+                        true
+                    }
+                )
+            }
+            add(
+                CustomAccessibilityAction(
+                    resources.getString(R.string.morekey_settings_disable)
                 ) {
-                    windowImpl.WindowContents(keyboardShown = !mainKeyboardHidden.value)
+                    disable(item)
+                    true
                 }
-            }
-
-            if((!mainKeyboardHidden.value && !latinIME.isInputConnectionOverridden)
-                || (latinIME.inputConnectionOverridenWithSuggestions)) {
-                val suggestedWordsOrNull = if (shouldShowSuggestionStrip.value) {
-                    suggestedWords.value
-                } else {
-                    null
-                }
-
-                if(!needToUseExpandableSuggestionUi) {
-                    CollapsibleSuggestionsBar(
-                        onCollapse = { toggleExpandAction() },
-                        onClose = { closeActionWindow() },
-                        words = suggestedWordsOrNull,
-                        showClose = currWindowActionWindow.value?.showCloseButton == true,
-                        showCollapse = currWindowActionWindow.value?.positionIsUserManagable == true,
-                        suggestionStripListener = suggestionStripListener
-                    )
-                }
-            } else if(showingAboveKeyboard && !needToUseExpandableSuggestionUi) {
-                ActionSep()
-                Spacer(Modifier.height(1.dp))
-            }
-        }
-    }
-
-    val activeDialogRequest: MutableState<ActiveDialogRequest?> = mutableStateOf(null)
-    val activeDialogRequestDismissed: MutableState<Boolean> = mutableStateOf(true)
-
-    @Composable
-    fun BoxScope.ForgetWordDialog() {
-        AnimatedVisibility(
-            visible = !activeDialogRequestDismissed.value,
-            modifier = Modifier.matchParentSize(),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            if (activeDialogRequest.value != null) {
-                Box(modifier = Modifier.matchParentSize()) {
-                    Surface(
-                        color = Color.Black.copy(alpha = 0.66f),
-                        modifier = Modifier
-                            .matchParentSize()
-                            .pointerInput(Unit) {
-                                this.detectTapGestures(onPress = {
-                                    activeDialogRequestDismissed.value = true
-                                    activeDialogRequest.value?.onCancel?.invoke()
-                                })
-                            }
-                    ) { }
-
-                    Box(modifier = Modifier
-                        .matchParentSize()
-                        .padding(8.dp)) {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.align(Alignment.Center)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    activeDialogRequest.value?.text ?: "",
-                                    style = Typography.Body.Medium
-                                )
-
-                                Row {
-                                    activeDialogRequest.value?.options?.forEach {
-                                        TextButton(
-                                            onClick = {
-                                                it.onClick()
-                                                activeDialogRequestDismissed.value = true
-                                            }
-                                        ) {
-                                            Text(it.option)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var languageSwitcherDialog: DialogComposeView? = null
-    fun showLanguageSwitcher() {
-        // Dismiss old dialog
-        languageSwitcherDialog?.dismiss()
-
-        // Create new dialog
-        languageSwitcherDialog = createDialogComposeView(latinIME) { dialog ->
-            DataStoreCacheProvider {
-                UixThemeAuto {
-                    LanguageSwitcherDialog(
-                        onDismiss = { dialog.dismiss() },
-                        switchToIme = {
-                            latinIME.lifecycleScope.launch(Dispatchers.Main) {
-                                latinIME.switchInputMethod(it.id)
-                                dialog.dismiss()
-                            }
-                        }
-                    )
-                }
-            }
-        }
-
-        languageSwitcherDialog?.show()
-    }
-
-    @Composable
-    fun ActionEditorHost() {
-        Box(modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = navBarHeight()), contentAlignment = Alignment.BottomCenter) {
-            AnimatedVisibility(
-                visible = isShowingActionEditor.value,
-                enter = slideInVertically { it },
-                exit = slideOutVertically { it },
-                content = {
-                    ActionEditor()
-                },
             )
         }
     }
 
-    @Composable
-    fun InputDarkener(darken: Boolean, onClose: () -> Unit) {
-        val color by animateColorAsState(
-            if (darken) Color.Black.copy(alpha = 0.25f) else Color.Transparent
+    val semantics = Modifier.clearAndSetSemantics {
+        contentDescription = item.name(resources)
+        stateDescription = resources.getString(
+            R.string.morekey_settings_kind_position,
+            (idx + 1).toString(),
+            (limits.last + 1).toString()
         )
 
-        LaunchedEffect(darken) {
-            latinIME.setInputModal(darken)
-        }
-
-        Box(Modifier
-            .background(color)
-            .fillMaxWidth()
-            .fillMaxHeight()
-            .then(
-                if (darken) {
-                    Modifier.pointerInput(Unit) {
-                        detectTapGestures {
-                            onClose()
-                        }
-                    }
-                } else {
-                    Modifier
-                })
-        )
-    }
-
-    @Composable
-    private fun OffsetPositioner(offset: Offset, content: @Composable () -> Unit) {
-        Column(modifier = Modifier
-            .fillMaxHeight()
-            .absoluteOffset { IntOffset(offset.x.toInt(), 0) }) {
-            Spacer(Modifier.weight(1.0f))
-            content()
-            Spacer(Modifier.height(with(LocalDensity.current) { offset.y.toDp() }))
+        if (talkBackOn) {
+            this.customActions = customActions
         }
     }
 
-    @Composable
-    private fun KeyboardSurface(
-        requiredWidthPx: Int,
-        backgroundColor: Color,
-        modifier: Modifier = Modifier,
-        shape: Shape = RectangleShape,
-        padding: Rect = Rect(),
-        content: @Composable BoxScope.() -> Unit
-    ) = with(LocalDensity.current) {
+    val dragging = remember { mutableStateOf(false) }
+    val offset = remember { mutableFloatStateOf(0.0f) }
+    val height = remember { mutableIntStateOf(1) }
 
-        Box(modifier
-            .onSizeChanged { measuredTouchableHeight = it.height }
-            .requiredWidth(requiredWidthPx.toDp())
-            .absolutePadding(
-                //top = padding.top.toDp().coerceAtLeast(0.dp),
-                //bottom = padding.bottom.toDp().coerceAtLeast(0.dp),
-            )
-            .clip(shape)
-            .clipToBounds()
-            // Blocks any input to inputDarkener within the keyboard
-            .pointerInput(Unit) {}
-        ) {
-            KeyboardBackground(LocalKeyboardScheme.current, latinIME.size.value)
-
-            CompositionLocalProvider(LocalKeyboardPadding provides KeyboardPadding(
-                    left = padding.left.toDp().coerceAtLeast(0.dp),
-                    right = padding.right.toDp().coerceAtLeast(0.dp),
-                )
-            ) {
-                CompositionLocalProvider(LocalContentColor provides LocalKeyboardScheme.current.onBackground) {
-                    content()
-                }
-            }
+    val pendingOffsetDiff = remember { mutableFloatStateOf(0.0f) }
+    LaunchedEffect(idx, pendingOffsetDiff.floatValue) {
+        if(pendingOffsetDiff.floatValue != 0.0f) {
+            offset.floatValue += pendingOffsetDiff.floatValue
+            pendingOffsetDiff.floatValue = 0.0f
         }
     }
 
-    @Composable
-    private fun FloatingKeyboardContents(
-        pointerInputKey: Any?,
-        onDragged: (Offset) -> Unit,
-        onDragEnd: () -> Unit,
-        content: @Composable BoxScope.(actionBarGap: Dp) -> Unit
-    ) {
-        // Content
-        Box(Modifier.fillMaxWidth()) {
-            content(4.dp)
-        }
+    val shouldClampLower = (idx - 1) < limits.first
+    val shouldClampUpper = (idx + 1) > limits.last
 
-        // Bottom drag bar
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .height(32.dp)
-            .pointerInput(pointerInputKey) {
-                detectDragGestures(
-                    onDrag = { _, dragAmount -> onDragged(dragAmount) },
-                    onDragEnd = { onDragEnd() })
-            }
-        ) {
-            IconButton(onClick = {
-                onActionActivated(KeyboardModeAction)
-            }, Modifier.align(Alignment.CenterEnd)) {
-                Icon(
-                    painterResource(R.drawable.keyboard_gear),
-                    contentDescription = stringResource(R.string.action_keyboard_modes_title),
-                    tint = LocalKeyboardScheme.current.onSurfaceVariant
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(0.6f)
-                    .height(4.dp)
-                    .align(Alignment.Center)
-                    .background(
-                        LocalKeyboardScheme.current.onSurfaceVariant,
-                        RoundedCornerShape(100)
-                    )
-            )
-        }
-    }
-
-    var floatingPosition = Offset.Zero
-
-    @Composable
-    private fun FloatingKeyboardWindow(
-        size: FloatingKeyboardSize,
-        content: @Composable BoxScope.(actionBarGap: Dp) -> Unit
-    ) = with(LocalDensity.current) {
-        val offset = remember(size) { mutableStateOf(Offset(size.bottomOrigin.first.toFloat(), size.bottomOrigin.second.toFloat())) }
-        val shape = RoundedCornerShape(16.dp)
-
-        OffsetPositioner(offset.value + Offset(0.0f, navBarHeight().toPx())) {
-            KeyboardSurface(
-                requiredWidthPx = size.width,
-                backgroundColor = latinIME.keyboardColor,
-                shape = shape,
-                padding = size.padding,
-                modifier = Modifier.onGloballyPositioned {
-                    floatingPosition = it.positionInWindow()
-                }
-            ) {
+    SettingItem(
+        title = "${idx+1}. " + item.name(resources),
+        subtitle = item.description(resources),
+        icon = {
+            if(talkBackOn) {
                 Column {
-                    FloatingKeyboardContents(
-                        pointerInputKey = size,
-                        onDragged = { dragAmount ->
-                            var newOffset = offset.value.copy(
-                                x = offset.value.x + dragAmount.x,
-                                y = offset.value.y - dragAmount.y
-                            )
-
-                            // Ensure we are not out of bounds
-                            newOffset = newOffset.copy(
-                                newOffset.x.coerceAtLeast(0.0f),
-                                newOffset.y.coerceAtLeast(0.0f)
-                            )
-                            newOffset = newOffset.copy(
-                                newOffset.x.coerceAtMost(
-                                    latinIME.getViewWidth().toFloat() - size.width
-                                ),
-                                newOffset.y.coerceAtMost(
-                                    latinIME.getViewHeight().toFloat() - measuredTouchableHeight
-                                )
-                            )
-
-                            offset.value = newOffset
-                        },
-                        onDragEnd = {
-                            latinIME.sizingCalculator.editSavedSettings { settings ->
-                                settings.copy(
-                                    floatingBottomOriginDp = Pair(
-                                        offset.value.x.toDp().value,
-                                        offset.value.y.toDp().value
-                                    )
-                                )
-                            }
-                        },
-                        content = content
-                    )
-                }
-
-                resizers.Resizer(this, size, shape)
-            }
-        }
-    }
-
-    @Composable
-    private fun BoxScope.OneHandedOptions(size: OneHandedKeyboardSize) = with(LocalDensity.current) {
-        Box(Modifier.matchParentSize()) {
-            Column(modifier = Modifier
-                .matchParentSize()
-                .absolutePadding(
-                    top = if (isActionsExpanded.value) ActionBarHeight else 0.dp
-                ), horizontalAlignment = when(size.direction) {
-                // Aligned opposite of the keyboard
-                OneHandedDirection.Left -> Alignment.End
-                OneHandedDirection.Right -> Alignment.Start
-            }) {
-                IconButton(onClick = {
-                    latinIME.sizingCalculator.editSavedSettings {
-                        it.copy(oneHandedDirection = it.oneHandedDirection.opposite)
+                    IconButton(onClick = { moveItem(item, -1) }) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = stringResource(R.string.morekey_settings_move_kind_up)
+                        )
                     }
-                }) {
-                    Icon(painterResource(when(size.direction) {
-                        // Show opposite icon
-                        OneHandedDirection.Left -> R.drawable.chevron_right
-                        OneHandedDirection.Right -> R.drawable.chevron_left
-                    }), contentDescription = stringResource(R.string.one_handed_mode_switch_hand)
-                    )
-                }
-
-                Spacer(Modifier.weight(1.0f))
-
-                IconButton(onClick = {
-                    latinIME.sizingCalculator.exitOneHandedMode()
-                }) {
-                    Icon(painterResource(R.drawable.maximize), contentDescription = stringResource(R.string.one_handed_mode_exit))
-                }
-
-                Spacer(Modifier.height(navBarHeight()))
-            }
-        }
-    }
-
-    @Composable
-    private fun NonFloatingKeyboardWindow(
-        size: ComputedKeyboardSize,
-        content: @Composable BoxScope.(actionBarGap: Dp) -> Unit
-    ) = with(LocalDensity.current) {
-        OffsetPositioner(Offset.Zero) {
-            KeyboardSurface(
-                requiredWidthPx = size.width,
-                backgroundColor = latinIME.keyboardColor,
-                padding = size.padding
-            ) {
-                val paddingOverride = when(size) {
-                    is OneHandedKeyboardSize -> {
-                        val pad = LocalKeyboardPadding.current
-                        val sidePad = (size.width - size.layoutWidth).toDp()
-                        when(size.direction) {
-                            OneHandedDirection.Left -> pad.copy(right = sidePad - pad.left)
-                            OneHandedDirection.Right -> pad.copy(left = sidePad - pad.right)
-                        }
-                    }
-                    else -> LocalKeyboardPadding.current
-                }
-
-                CompositionLocalProvider(LocalKeyboardPadding provides paddingOverride) {
-                    content(size.padding.top.toDp().coerceAtLeast(4.dp))
-                    resizers.Resizer(this, size)
-                }
-
-                if(size is OneHandedKeyboardSize) {
-                    OneHandedOptions(size)
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun KeyboardWindowSelector(content: @Composable BoxScope.(actionBarGap: Dp) -> Unit) {
-        val size = latinIME.size.value
-        when(size) {
-            is FloatingKeyboardSize -> FloatingKeyboardWindow(size, content)
-
-            is OneHandedKeyboardSize,
-            is RegularKeyboardSize,
-            is SplitKeyboardSize -> NonFloatingKeyboardWindow(size, content)
-
-            null -> return
-        }
-    }
-
-    var prevSize: IntSize = IntSize.Zero
-    @Composable
-    private fun ProvidersAndWrapper(content: @Composable () -> Unit) {
-        UixThemeWrapper(latinIME.colorScheme) {
-            DataStoreCacheProvider {
-                CompositionLocalProvider(
-                    LocalManager provides keyboardManagerForAction,
-                    LocalThemeProvider provides latinIME.getDrawableProvider(),
-                    LocalLayoutDirection provides LayoutDirection.Ltr,
-                    LocalFoldingState provides foldingOptions.value
-                ) {
-                    Box(Modifier
-                        .fillMaxSize()
-                        .onSizeChanged {
-                            // If the size changes, call the service to check if the size needs
-                            // to be recalculated and keyboard recreated
-                            if (it != prevSize) {
-                                prevSize = it
-                                latinIME.onSizeUpdated()
-                            }
-                        }) {
-                        content()
+                    IconButton(onClick = { moveItem(item, 1) }) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = stringResource(R.string.morekey_settings_move_kind_down)
+                        )
                     }
                 }
-            }
-        }
-    }
-
-    @Composable
-    private fun BoxScope.CenterCursorTrackpad() {
-        val enabled = useDataStore(centerCursorTrackpadSetting)
-        if (!enabled.value || mainKeyboardHidden.value || currWindowActionWindow.value != null) return
-
-        val isExpanded = remember { mutableStateOf(false) }
-        val dragOffset = remember { mutableStateOf(Offset.Zero) }
-        val accumX = remember { mutableStateOf(0f) }
-        val accumY = remember { mutableStateOf(0f) }
-        val view = LocalView.current
-        val density = LocalDensity.current.density
-        val stepPxX = 12f * density
-        val stepPxY = 24f * density
-
-        val currentSize = if (isExpanded.value) 58.dp else 22.dp
-        val bgColor = if (isExpanded.value) {
-            LocalKeyboardScheme.current.primary.copy(alpha = 0.88f)
-        } else {
-            LocalKeyboardScheme.current.onKeyboardContainer.copy(alpha = 0.35f)
-        }
-
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .offset {
-                    IntOffset(
-                        (dragOffset.value.x * 0.35f).roundToInt(),
-                        (dragOffset.value.y * 0.35f).roundToInt()
-                    )
-                }
-                .size(currentSize)
-                .clip(RoundedCornerShape(100))
-                .background(bgColor)
-                .pointerInput(Unit) {
-                    androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress(
+            } else {
+                Box(Modifier.pointerInput(Unit) {
+                    detectDragGestures(
                         onDragStart = {
-                            isExpanded.value = true
-                            dragOffset.value = Offset.Zero
-                            accumX.value = 0f
-                            accumY.value = 0f
-                            keyboardManagerForAction.performHapticAndAudioFeedback(Constants.CODE_SPACE, view)
+                            dragging.value = true
+                            offset.floatValue = 0.0f
                         },
                         onDragEnd = {
-                            isExpanded.value = false
-                            dragOffset.value = Offset.Zero
+                            dragging.value = false
+                            offset.floatValue = 0.0f
                         },
                         onDragCancel = {
-                            isExpanded.value = false
-                            dragOffset.value = Offset.Zero
+                            dragging.value = false
+                            offset.floatValue = 0.0f
                         },
                         onDrag = { change, dragAmount ->
-                            change.consume()
-                            dragOffset.value += dragAmount
-                            accumX.value += dragAmount.x
-                            accumY.value += dragAmount.y
+                            offset.floatValue += dragAmount.y
 
-                            val stepsX = (accumX.value / stepPxX).toInt()
-                            if (stepsX != 0) {
-                                accumX.value -= stepsX * stepPxX
-                                if (stepsX > 0) {
-                                    for (i in 0 until stepsX) keyboardManagerForAction.cursorRight(1, false, false)
-                                } else {
-                                    for (i in 0 until -stepsX) keyboardManagerForAction.cursorLeft(1, false, false)
-                                }
+                            if ((offset.floatValue + pendingOffsetDiff.floatValue).absoluteValue > height.intValue) {
+                                val direction = offset.floatValue.sign.toInt()
+                                moveItem(
+                                    item,
+                                    direction
+                                )
+                                pendingOffsetDiff.floatValue -= height.intValue * direction
                             }
 
-                            val stepsY = (accumY.value / stepPxY).toInt()
-                            if (stepsY != 0) {
-                                accumY.value -= stepsY * stepPxY
-                                val keyCode = if (stepsY > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
-                                val count = kotlin.math.abs(stepsY)
-                                for (i in 0 until count) {
-                                    keyboardManagerForAction.sendKeyEvent(keyCode, 0)
-                                }
-                            }
                         }
                     )
+                }) {
+                    dragIcon()
                 }
-        ) {
-            if (isExpanded.value) {
-                Icon(
-                    painter = painterResource(id = R.drawable.direction_arrows),
-                    contentDescription = null,
-                    tint = LocalKeyboardScheme.current.onPrimary,
-                    modifier = Modifier.size(28.dp)
-                )
+            }
+        },
+        modifier = semantics
+            .onSizeChanged { size -> height.intValue = size.height }
+            .let { modifier ->
+                if (!dragging.value) {
+                    modifier
+                        .background(LocalKeyboardScheme.current.surfaceTint.copy(alpha = if(idx % 2 == 0) 0.02f else 0.06f))
+                } else {
+                    modifier
+                        .zIndex(10.0f)
+                        .graphicsLayer {
+                            clip = false
+                            translationX = 0.0f
+                            translationY = offset.floatValue.let {
+                                if (shouldClampLower && it < 0.0f) 0.0f
+                                else if (shouldClampUpper && it > 0.0f) 0.0f
+                                else it
+                            }
+                        }
+                        .background(
+                            LocalKeyboardScheme.current.surfaceTint.copy(alpha = 0.2f)
+                                .compositeOver(LocalKeyboardScheme.current.background)
+                        )
+                }
+            }
+    ) {
+        IconButton(onClick = { disable(item) }) {
+            Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.morekey_settings_disable))
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun LongPressKeyLayoutEditor(context: Context, setting: DataStoreItem<String>) {
+    val resources = LocalResources.current
+    Row(Modifier.padding(16.dp)) {
+        Text(stringResource(R.string.morekey_settings_layout), style = Typography.Heading.Medium, modifier = Modifier
+            .align(CenterVertically)
+            .weight(1.0f))
+
+        Spacer(Modifier.width(4.dp))
+
+        Button(onClick = {
+            setting.setValue(LongPressKeyLayoutSetting.default)
+        }) {
+            Text(stringResource(R.string.morekey_settings_reset))
+        }
+    }
+
+
+    val dragIcon: @Composable () -> Unit = {
+        Icon(Icons.Default.Menu, contentDescription = null, tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
+    }
+
+    val items = setting.value.toLongPressKeyLayoutItems()
+
+    val moveItem: (item: LongPressKey, direction: Int) -> Unit = { item, direction ->
+        val oldItems = context.getSettingBlocking(LongPressKeyLayoutSetting).toLongPressKeyLayoutItems()
+        val oldIdx = oldItems.indexOf(item)
+
+        val insertIdx = (oldIdx + direction).coerceAtLeast(0).coerceAtMost(oldItems.size - 1)
+
+        val newItems = oldItems.filter { it != item }.toMutableList().apply {
+            add(insertIdx, item)
+        }.toEncodedString()
+
+        setting.setValue(newItems)
+    }
+
+    val disable: (item : LongPressKey) -> Unit = { item ->
+        val oldItems = context.getSettingBlocking(LongPressKeyLayoutSetting).toLongPressKeyLayoutItems()
+
+        val newItems = oldItems.filter { it != item }.toEncodedString()
+
+        setting.setValue(newItems)
+
+    }
+
+    val enable: (item : LongPressKey) -> Unit = { item ->
+        val oldItems = context.getSettingBlocking(LongPressKeyLayoutSetting).toLongPressKeyLayoutItems()
+
+        val newItems = oldItems.filter { it != item }.toMutableList().apply {
+            add(item)
+        }.toEncodedString()
+
+        setting.setValue(newItems)
+    }
+
+    if(items.isNotEmpty()) {
+        Text(
+            stringResource(R.string.morekey_settings_active),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Column(Modifier.semantics {
+            collectionInfo = CollectionInfo(
+                rowCount = items.size,
+                columnCount = 1
+            )
+            contentDescription = resources.getString(R.string.morekey_settings_active)
+        }) {
+            items.forEachIndexed { i, v ->
+                key(v.ordinal) {
+                    DraggableSettingItem(
+                        idx = i,
+                        item = v,
+                        moveItem = moveItem,
+                        disable = disable,
+                        dragIcon = dragIcon,
+                        limits = items.indices
+                    )
+                }
             }
         }
     }
 
-    @Composable
-    fun Content() {
-        ProvidersAndWrapper {
-            InputDarkener(isInputOverridden.value || isShowingActionEditor.value) {
-                closeActionWindow()
-                isShowingActionEditor.value = false
+    val inactiveEntries = LongPressKey.entries.filter { !items.contains(it) }
+    if(inactiveEntries.isNotEmpty()) {
+        Text(
+            stringResource(R.string.morekey_settings_inactive),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
+        Column(Modifier.semantics {
+            collectionInfo = CollectionInfo(
+                rowCount = inactiveEntries.size,
+                columnCount = 1
+            )
+            contentDescription = resources.getString(R.string.morekey_settings_inactive)
+        }) {
+            inactiveEntries.forEach {
+                SettingItem(
+                    title = it.name(resources),
+                    subtitle = it.description(resources),
+                    modifier = Modifier.clearAndSetSemantics {
+                        contentDescription = it.name(resources)
+
+                        onClick(label = resources.getString(R.string.morekey_settings_reactivate)) {
+                            enable(it)
+                            true
+                        }
+                    }
+                ) {
+                    IconButton(onClick = { enable(it) }) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = stringResource(R.string.morekey_settings_reactivate)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+val LongPressMenu = UserSettingsMenu(
+    title = R.string.morekey_settings_keys,
+    navPath = "longPress", registerNavPath = true,
+    settings = listOf(
+        userSettingToggleDataStore(
+            title = R.string.morekey_settings_show_hints,
+            subtitle = R.string.morekey_settings_show_hints_subtitle,
+            setting = KeyHintsSetting
+        ).copy(searchTags = R.string.morekey_settings_show_hints_tags),
+
+        userSettingDecorationOnly {
+            ScreenTitle(stringResource(R.string.morekey_settings_backspace_title))
+        },
+
+        UserSetting(name = R.string.morekey_settings_backspace_hold_delete_words) {
+            val oldSetting = useSharedPrefsInt(
+                key = Settings.PREF_BACKSPACE_MODE,
+                default = Settings.BACKSPACE_MODE_CHARACTERS
+            )
+
+            val setting = useSharedPrefsInt(
+                key = Settings.PREF_BACKSPACE_MODE_HOLD,
+                default = oldSetting.value
+            )
+
+            SettingToggleRaw(
+                title = stringResource(R.string.morekey_settings_backspace_hold_delete_words),
+                enabled = setting.value == Settings.BACKSPACE_MODE_WORDS,
+                setValue = { to ->
+                    setting.setValue(if(to) Settings.BACKSPACE_MODE_WORDS else Settings.BACKSPACE_MODE_CHARACTERS)
+                }
+            )
+        },
+
+        UserSetting(name = R.string.morekey_settings_backspace_swipe_to_delete) {
+            val setting = useSharedPrefsInt(
+                key = Settings.PREF_BACKSPACE_MODE,
+                default = Settings.BACKSPACE_MODE_CHARACTERS
+            )
+
+            val deleteModes = mapOf(
+                Settings.BACKSPACE_MODE_OFF to stringResource(R.string.morekey_settings_backspace_swipe_to_delete_off),
+                Settings.BACKSPACE_MODE_CHARACTERS to stringResource(R.string.morekey_settings_backspace_swipe_to_delete_characters),
+                Settings.BACKSPACE_MODE_WORDS to stringResource(R.string.morekey_settings_backspace_swipe_to_delete_words),
+            )
+
+            DropDownPickerSettingItem(
+                label = stringResource(R.string.morekey_settings_backspace_swipe_to_delete),
+                options = deleteModes.keys.toList(),
+                selection = setting.value,
+                onSet = { setting.setValue(it) },
+                getDisplayName = { deleteModes[it] ?: "?" },
+            )
+        },
+
+
+        userSettingDecorationOnly {
+            ScreenTitle(stringResource(R.string.morekey_settings_spacebar_title))
+        },
+
+        UserSetting(name = R.string.morekey_settings_spacebar_swipe_shortcut) {
+            val setting = useSharedPrefsInt(
+                key = Settings.PREF_SPACEBAR_SWIPE_MODE,
+                default = remember { Settings.getInstance().current.mSpacebarSwipeMode }
+            )
+
+            val modes = mapOf(
+                Settings.SPACEBAR_MODE_OFF to stringResource(R.string.morekey_settings_spacebar_swipe_shortcut_off),
+                Settings.SPACEBAR_MODE_CURSOR to stringResource(R.string.morekey_settings_spacebar_swipe_shortcut_cursor),
+                Settings.SPACEBAR_MODE_LANGUAGE to stringResource(R.string.morekey_settings_spacebar_swipe_shortcut_language),
+            )
+
+            DropDownPickerSettingItem(
+                label = stringResource(R.string.morekey_settings_spacebar_swipe_shortcut),
+                options = modes.keys.toList(),
+                selection = setting.value,
+                onSet = { setting.setValue(it) },
+                getDisplayName = { modes[it] ?: "?" },
+            )
+        },
+
+        UserSetting(name = R.string.morekey_settings_spacebar_hold_shortcut) {
+            val setting = useSharedPrefsInt(
+                key = Settings.PREF_SPACEBAR_HOLD_MODE,
+                default = remember { Settings.getInstance().current.mSpacebarHoldMode }
+            )
+
+            val modes = mapOf(
+                Settings.SPACEBAR_MODE_CURSOR to stringResource(R.string.morekey_settings_spacebar_hold_shortcut_cursor),
+                Settings.SPACEBAR_MODE_LANGUAGE to stringResource(R.string.morekey_settings_spacebar_hold_shortcut_language),
+            )
+
+            DropDownPickerSettingItem(
+                label = stringResource(R.string.morekey_settings_spacebar_hold_shortcut),
+                options = modes.keys.toList(),
+                selection = setting.value,
+                onSet = { setting.setValue(it) },
+                getDisplayName = { modes[it] ?: "?" },
+            )
+        },
+
+        // TODO: Might not work well for showing up in search
+        UserSetting(name = R.string.morekey_settings_layout) {
+            val context = LocalContext.current
+            val setting = useDataStore(LongPressKeyLayoutSetting)
+            LongPressKeyLayoutEditor(
+                context = context,
+                setting = setting,
+            )
+        },
+
+        UserSetting(
+            name = R.string.morekey_settings_duration,
+            subtitle = R.string.morekey_settings_duration_subtitle,
+        ) {
+            val resources = LocalResources.current
+            SettingSliderSharedPrefsInt(
+                title = stringResource(R.string.morekey_settings_duration),
+                subtitle = stringResource(R.string.morekey_settings_duration_subtitle),
+                key = Settings.PREF_KEY_LONGPRESS_TIMEOUT,
+                default = 300,
+                range = 100.0f..700.0f,
+                hardRange = 25.0f..1200.0f,
+                transform = { it.roundToInt() },
+                indicator = { resources.getString(R.string.abbreviation_unit_milliseconds, "$it") },
+                steps = 23
+            )
+        },
+    )
+)
+
+@Composable
+private fun AutoSpacesSetting() {
+    val altSpacesMode = useSharedPrefsInt(Settings.PREF_ALT_SPACES_MODE, Settings.DEFAULT_ALT_SPACES_MODE)
+    val autoSpaceModes = mapOf(
+        Settings.SPACES_MODE_ALL to stringResource(R.string.typing_settings_auto_space_mode_auto2),
+        Settings.SPACES_MODE_SUGGESTIONS to stringResource(R.string.typing_settings_auto_space_mode_suggestions2),
+        Settings.SPACES_MODE_LEGACY to stringResource(R.string.typing_settings_auto_space_mode_legacy2),
+        Settings.SPACES_MODE_NONE to stringResource(R.string.typing_settings_auto_space_mode_none2),
+    )
+    DropDownPickerSettingItem(
+        label = stringResource(R.string.typing_settings_auto_space_mode),
+        options = autoSpaceModes.keys.toList(),
+        selection = altSpacesMode.value,
+        onSet = {
+            altSpacesMode.setValue(it)
+        },
+        getDisplayName = {
+            autoSpaceModes[it] ?: "?"
+        },
+        icon = {
+            Icon(painterResource(R.drawable.space), contentDescription = null)
+        }
+    )
+}
+
+val NumberRowSettingMenu = UserSettingsMenu(
+    title = R.string.keyboard_settings_number_row_title,
+    navPath = "numberRow", registerNavPath = true,
+    settings = listOf(
+        userSettingDecorationOnly {
+            PrimarySettingToggleDataStoreItem(
+                stringResource(R.string.keyboard_settings_show_number_row),
+                useSharedPrefsBool(Settings.PREF_ENABLE_NUMBER_ROW, false)
+            )
+        },
+
+        userSettingToggleSharedPrefs(
+            R.string.keyboard_settings_number_row_dont_use_script_digits,
+            default = {false},
+            key = Settings.PREF_USE_WESTERN_NUMERALS,
+        ).copy(visibilityCheck = {
+            useSharedPrefsBool(Settings.PREF_ENABLE_NUMBER_ROW, false).value
+        }),
+
+        UserSetting(name = R.string.keyboard_settings_number_row_style, visibilityCheck = {
+            useSharedPrefsBool(Settings.PREF_ENABLE_NUMBER_ROW, false).value
+        }) {
+            val context = LocalContext.current
+            val scheme = LocalKeyboardScheme.current
+            val provider = remember(scheme) {
+                BasicThemeProvider(context, scheme)
+            }
+            val keySize = with(LocalDensity.current) {
+                32.dp.toPx() to 48.dp.toPx()
+            }
+            val background = remember(provider) {
+                provider.keyBackground.toBitmap(
+                    width = keySize.first.toInt(),
+                    height = keySize.second.toInt()
+                ).asImageBitmap()
             }
 
-            TutorialArrow()
+            val measurer = rememberTextMeasurer()
+            val textSizePx = background.height / 2f
+            val textSizeSp = with(LocalDensity.current) { textSizePx.toSp() }
+            val color = LocalKeyboardScheme.current.onKeyboardContainer
 
-            KeyboardWindowSelector { gap ->
-                Column {
-                    Box(Modifier.onGloballyPositioned { floatingPreeditPosition.value = it })
-                    // TODO: Refactor how we handle expandable suggestions here to not be a mess
-                    val needToUseExpandableSuggestionUi =
-                        expandableSuggestionCfg.value.useExpandableUi && suggestedWords.value?.size()?.equals(0) != true
-                                && mainKeyboardHidden.value == false
-                                && (quickClipState.value == null || inlineStuffHiddenByTyping.value)
-                                && currentNotice.value == null
-                                && (inlineSuggestions.value.isEmpty() || inlineStuffHiddenByTyping.value)
-                    when {
-                        currWindowActionWindow.value != null -> ActionViewWithHeader(
-                            currWindowActionWindow.value!!,
-                            needToUseExpandableSuggestionUi
-                        )
+            val textLayoutResult = measurer.measure(
+                text = "1",
+                style = TextStyle(
+                    fontSize = textSizeSp,
+                    color = color,
+                    textAlign = TextAlign.Center
+                )
+            )
 
-                        else -> MainKeyboardViewWithActionBar(
-                            needToUseExpandableSuggestionUi
-                        )
-                    }
-
-                    if(!needToUseExpandableSuggestionUi) {
-                        Spacer(modifier = Modifier.height(gap))
-                    }
-
-                    val kbHeight = remember { mutableIntStateOf(latinIME.size.value!!.height) }
-                    val keyboardViewOffset = remember(needToUseExpandableSuggestionUi) { mutableIntStateOf(0) }
-                    Box(Modifier.let {
-                        if(needToUseExpandableSuggestionUi) {
-                            it.height(
-                                with(LocalDensity.current) { kbHeight.intValue.toDp() }
-                                        + latinIME.sizingCalculator.calculateSuggestionBarHeightDp().dp
-                                        + gap
+            SettingRadio(
+                title = stringResource(R.string.keyboard_settings_number_row_style),
+                options = listOf(
+                    Settings.NUMBER_ROW_MODE_DEFAULT,
+                    Settings.NUMBER_ROW_MODE_CLASSIC
+                ),
+                optionNames = listOf(
+                    stringResource(R.string.keyboard_settings_number_row_style_default),
+                    stringResource(R.string.keyboard_settings_number_row_style_classic),
+                ),
+                setting = useSharedPrefsInt(
+                    key = Settings.PREF_NUMBER_ROW_MODE,
+                    default = Settings.NUMBER_ROW_MODE_DEFAULT
+                ),
+                hints = listOf(
+                    {
+                        androidx.compose.foundation.Canvas(
+                            modifier = Modifier.size(32.dp, 48.dp)
+                        ) {
+                            drawText(
+                                textLayoutResult = textLayoutResult,
+                                topLeft = Offset(
+                                    x = background.width / 2.0f - textLayoutResult.size.width / 2.0f,
+                                    y = background.height / 2.0f - textLayoutResult.size.height / 2.0f,
+                                )
                             )
+                        }
+                    },
+                    {
+                        androidx.compose.foundation.Canvas(
+                            modifier = Modifier.size(32.dp, 48.dp)
+                        ) {
+                            drawImage(background)
+                            drawText(
+                                textLayoutResult = textLayoutResult,
+                                topLeft = Offset(
+                                    x = background.width / 2.0f - textLayoutResult.size.width / 2.0f,
+                                    y = background.height / 2.0f - textLayoutResult.size.height / 2.0f,
+                                )
+                            )
+                        }
+                    },
+                )
+            )
+        }
+    )
+)
+
+val KeyboardSettingsMenu = UserSettingsMenu(
+    title = R.string.keyboard_settings_title,
+    navPath = "keyboard", registerNavPath = true,
+    settings = listOf(
+        userSettingNavigationItem(
+            title = R.string.size_settings_title,
+            subtitle = R.string.size_settings_subtitle2,
+            style = NavigationItemStyle.Misc,
+            navigateTo = "resize",
+            icon = R.drawable.maximize
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.keyboard_settings_show_number_row,
+            subtitle = R.string.keyboard_settings_show_number_row_subtitle,
+            key = Settings.PREF_ENABLE_NUMBER_ROW,
+            default = {false},
+            icon = { Text("123", style = Typography.Body.MediumMl, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
+                modifier = Modifier.clearAndSetSemantics{}) },
+            submenu = NumberRowSettingMenu.navPath
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.keyboard_settings_show_arrow_row,
+            subtitle = R.string.keyboard_settings_show_arrow_row_subtitle,
+            key = Settings.PREF_ENABLE_ARROW_ROW,
+            default = {false},
+            icon = {
+                Icon(painterResource(id = R.drawable.direction_arrows), contentDescription = null)
+            }
+        ),
+        userSettingNavigationItem(
+            title = R.string.morekey_settings_title,
+            subtitle = R.string.morekey_settings_subtitle,
+            style = NavigationItemStyle.Misc,
+            navigateTo = "longPress",
+            icon = R.drawable.arrow_up
+        ),
+        userSettingToggleDataStore(
+            title = R.string.keyboard_settings_show_suggestion_row,
+            subtitle = R.string.keyboard_settings_show_suggestion_row_subtitle,
+            setting = ActionBarDisplayedSetting,
+            icon = {
+                Icon(painterResource(id = R.drawable.more_horizontal), contentDescription = null)
+            }
+        ),
+        userSettingToggleDataStore(
+            title = R.string.keyboard_settings_inline_autofill,
+            subtitle = R.string.keyboard_settings_inline_autofill_subtitle,
+            setting = InlineAutofillSetting
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.keyboard_settings_period_key,
+            subtitle = R.string.keyboard_settings_period_key_subtitle2,
+            key = Settings.PREF_ENABLE_ALT_PERIOD_KEY,
+            default = {false},
+        ),
+        userSettingToggleDataStore(
+            title = R.string.keyboard_settings_hide_when_hardware_keyboard_is_connected,
+            setting = HideKeyboardWhenHardKeyboardConnected
+        ),
+        UserSetting(
+            name = R.string.morekey_settings_spacebar_title,
+            component = {
+                SyncDataStoreToPreferencesFloat(spacebarWidthScaleSetting, Settings.PREF_SPACEBAR_WIDTH_SCALE)
+
+                SettingSlider(
+                    title = "عرض زر المسافة (Spacebar Width)",
+                    setting = spacebarWidthScaleSetting,
+                    range = 0.8f .. 1.6f,
+                    hardRange = 0.5f .. 2.0f,
+                    transform = { (it * 100.0f).roundToInt() / 100.0f },
+                    indicator = { "${(it * 100.0f).roundToInt()}%" }
+                )
+            }
+        ),
+        UserSetting(
+            name = R.string.morekey_settings_spacebar_hold_shortcut_cursor,
+            component = {
+                val setting = useDataStore(centerCursorTrackpadSetting)
+                SettingToggleRaw(
+                    title = "دائرة تحريك المؤشر في المنتصف (Center TrackPoint)",
+                    enabled = setting.value,
+                    setValue = { setting.setValue(it) }
+                )
+            }
+        )
+    )
+)
+
+val TypingSettingsMenu = UserSettingsMenu(
+    title = R.string.typing_settings_title,
+    navPath = "typing", registerNavPath = true,
+    settings = listOf(
+        UserSetting(
+            name = R.string.typing_settings_auto_space_mode,
+            component = {
+                AutoSpacesSetting()
+            }
+        ),
+        userSettingToggleDataStore(
+            title = R.string.typing_settings_suggest_emojis,
+            subtitle = R.string.typing_settings_suggest_emojis_subtitle,
+            setting = SHOW_EMOJI_SUGGESTIONS,
+            icon = {
+                Icon(painterResource(id = R.drawable.smile), contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
+            }
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.auto_cap,
+            subtitle = R.string.auto_cap_summary,
+            key = Settings.PREF_AUTO_CAP,
+            default = {true},
+            icon = {
+                Text("Aa", style = Typography.Body.MediumMl, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
+            }
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.use_double_space_period,
+            subtitle = R.string.use_double_space_period_summary,
+            key = Settings.PREF_KEY_USE_DOUBLE_SPACE_PERIOD,
+            default = {true},
+            icon = {
+                Text(".", style = Typography.Body.MediumMl, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
+            }
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.typing_settings_delete_pasted_text_on_backspace,
+            key = Settings.PREF_BACKSPACE_DELETE_INSERTED_TEXT,
+            default = {true}
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.typing_settings_revert_correction_on_backspace,
+            key = Settings.PREF_BACKSPACE_UNDO_AUTOCORRECT,
+            default = {true}
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.popup_on_keypress,
+            key = Settings.PREF_POPUP_ON,
+            default = {booleanResource(R.bool.config_default_key_preview_popup)}
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.vibrate_on_keypress,
+            key = Settings.PREF_VIBRATE_ON,
+            default = {booleanResource(R.bool.config_default_vibration_enabled)}
+        ),
+        UserSetting(
+            name = R.string.typing_settings_vibration_strength,
+            visibilityCheck = {
+                LocalSharedPrefsCache.current!!.currSharedPrefs.getBoolean(
+                    Settings.PREF_VIBRATE_ON,
+                    booleanResource(R.bool.config_default_vibration_enabled)
+                )
+            },
+            component = {
+                val context = LocalContext.current
+                val resources = LocalResources.current
+                SyncDataStoreToPreferencesInt(vibrationDurationSetting, PREF_VIBRATION_DURATION_SETTINGS)
+
+                SettingSlider(
+                    title = stringResource(R.string.typing_settings_vibration_strength),
+                    setting = vibrationDurationSetting,
+                    range = -1.0f .. 100.0f,
+                    hardRange = -1.0f .. 2000.0f,
+                    transform = { it.roundToInt() },
+                    indicator = {
+                        if(it == -1) {
+                            resources.getString(R.string.typing_settings_vibration_strength_default)
+                        } else {
+                            resources.getString(R.string.abbreviation_unit_milliseconds, "$it")
+                        }
+                    }
+                )
+            }
+        ),
+        userSettingToggleSharedPrefs(
+            title = R.string.sound_on_keypress,
+            key = Settings.PREF_SOUND_ON,
+            default = {booleanResource(R.bool.config_default_sound_enabled)}
+        ),
+        UserSetting(
+            name = R.string.typing_settings_keypress_sound_volume,
+            visibilityCheck = {
+                LocalSharedPrefsCache.current!!.currSharedPrefs.getBoolean(
+                    Settings.PREF_SOUND_ON,
+                    booleanResource(R.bool.config_default_sound_enabled)
+                )
+            },
+            component = {
+                val context = LocalContext.current
+                val resources = LocalResources.current
+                SyncDataStoreToPreferencesFloat(keySoundVolumeSetting, PREF_KEYPRESS_SOUND_VOLUME)
+
+                val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                val value = remember { mutableFloatStateOf(0.0f) }
+                val ringerMode = remember { mutableStateOf(audioManager.getRingerMode() == AudioManager.RINGER_MODE_NORMAL) }
+                val firstPlayback = remember { mutableStateOf(false) }
+
+                LaunchedEffect(value.floatValue) {
+                    delay(100L) // debounce
+                    if(firstPlayback.value == false) {
+                        firstPlayback.value = true
+                        return@LaunchedEffect
+                    }
+                    val volume = value.floatValue.let {
+                        if(it == -1.0f) {
+                            Settings.readDefaultKeypressSoundVolume(resources)
                         } else {
                             it
                         }
-                    }) {
-                        if(needToUseExpandableSuggestionUi) {
-                            ActionBarWithExpandableCandidates(
-                                suggestedWords.value,
-                                suggestionStripListener,
-                                isActionsExpanded = isActionsExpanded.value,
-                                toggleActionsExpanded = { toggleActionsExpanded() },
-                                closeActionWindow = currWindowActionWindow.value?.let {{ closeActionWindow() }},
-                                keyboardOffset = keyboardViewOffset,
-                                keyboardHeight = (latinIME.size.value?.height ?: kbHeight.intValue) + with(LocalDensity.current) { navBarHeight().toPx().toInt() },
-                                expandableSuggestionCfg = expandableSuggestionCfg.value
-                            )
-                        }
-                        latinIME.LegacyKeyboardView(modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .onSizeChanged {
-                                // TODO: Is there a better way?
-                                kbHeight.intValue = it.height.let {
-                                    if (it > 0) {
-                                        it
-                                    } else {
-                                        latinIME.size.value!!.height
-                                    }
-                                }
-                            }
-                            .absoluteOffset { IntOffset(0, keyboardViewOffset.intValue) },
-                            hidden = mainKeyboardHidden.value)
-
-                        CenterCursorTrackpad()
                     }
 
-                    if(latinIME.size.value !is FloatingKeyboardSize) {
-                        Spacer(Modifier.height(navBarHeight()))
+                    val shouldPlay = audioManager.getRingerMode() == AudioManager.RINGER_MODE_NORMAL
+                    ringerMode.value = shouldPlay
+
+                    if(shouldPlay) {
+                        audioManager.playSoundEffect(
+                            AudioManager.FX_KEYPRESS_STANDARD,
+                            volume
+                        )
                     }
                 }
 
-                ForgetWordDialog()
-            }
-
-            ActionEditorHost()
-
-            val preedit = floatingPreedit.value
-            if(preedit != null && floatingPreeditShown) {
-                FloatingPreEditView(preedit, floatingPreeditPosition.value,
-                    { floatingPreeditHeight.value = it },
-                    floatingPreeditText, floatingPreeditEditing)
-            }
-        }
-    }
-
-    private val floatingPreeditShown: Boolean get() = run {
-        val preedit = floatingPreedit.value
-        return preedit != null && (preedit.entries.isNotEmpty() || floatingPreeditEditing.value)
-    }
-
-    fun setContent() {
-        composeView?.setContent {
-            Content()
-        }
-    }
-
-    suspend fun showUpdateNoticeIfNeeded() {
-        if(!BuildConfig.UPDATE_CHECKING) return
-
-        autoDeferManualUpdateIfNeeded(latinIME)
-
-        val updateInfo = retrieveSavedLastUpdateCheckResult(latinIME)
-        if(updateInfo != null && updateInfo.isNewer()) {
-            /*if(!latinIME.getSetting(DISABLE_UPDATE_REMINDER)) {
-                numSuggestionsSinceNotice = 0
-                currentNotice.value = object : ImportantNotice {
-                    @Composable
-                    override fun getText(): String {
-                        return "Update available: ${updateInfo.nextVersionString}"
-                    }
-
-                    override fun onDismiss(context: Context) {
-                        currentNotice.value = null
-                    }
-
-                    override fun onOpen(context: Context) {
-                        currentNotice.value = null
-
-                        val intent = Intent(context, SettingsActivity::class.java)
-                        intent.putExtra("navDest", "update")
-
-                        if (context !is Activity) {
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        }
-
-                        context.startActivity(intent)
-                    }
-                }
-            }*/
-        } else {
-            if(isManualUpdateTimeExpired(latinIME)) {
-                numSuggestionsSinceNotice = 0
-                currentNotice.value = object : ImportantNotice {
-                    @Composable
-                    override fun getText(): String {
-                        return stringResource(R.string.keyboard_actionbar_manual_update_check_notice)
-                    }
-
-                    override fun onDismiss(context: Context, auto: Boolean) {
-                        currentNotice.value = null
-
-                        runBlocking {
-                            deferManualUpdate(latinIME)
-                        }
-                    }
-
-                    override fun onOpen(context: Context) {
-                        currentNotice.value = null
-                        context.openManualUpdateCheck()
-
-                        runBlocking {
-                            deferManualUpdate(latinIME)
-                        }
-                    }
+                if(!ringerMode.value) {
+                    Tip(stringResource(R.string.typing_settings_keypress_sound_volume_ringer_mode_warning))
                 }
 
-            }
-        }
-    }
+                Tip(stringResource(R.string.typing_settings_keypress_sound_volume_vendor_warning))
 
-    fun onColorSchemeChanged() {
-        setContent()
-    }
-
-    fun cleanUpPersistentStates() {
-        for((key, value) in persistentStates.entries) {
-            if(currWindowAction != key) {
-                latinIME.lifecycleScope.launch { value?.cleanUp() }
-            }
-        }
-    }
-
-    fun closeActionWindow(allowSkipClosing: Boolean = false) {
-        if(returnBackToMainKeyboardViewFromAction(allowSkipClosing) == false) return
-
-        // Reset any typeface override as they're not supposed to persist outside of an active
-        // action window
-        keyboardManagerForAction.overrideKeyboardTypeface(null)
-    }
-
-
-    fun updateVisibility(shouldShowSuggestionsStrip: Boolean, fullscreenMode: Boolean) {
-        this.shouldShowSuggestionStrip.value = shouldShowSuggestionsStrip
-    }
-
-    fun setSuggestions(suggestedWords: SuggestedWords?, rtlSubtype: Boolean, cfg: ExpandableSuggestionBarConfiguration) {
-        this.suggestedWords.value = suggestedWords
-        this.expandableSuggestionCfg.value = cfg
-
-        if(currentNotice.value != null && suggestedWords?.isEmpty != true) {
-            if(numSuggestionsSinceNotice > 0) {
-                currentNotice.value?.onDismiss(latinIME, true)
-            }
-            numSuggestionsSinceNotice += 1
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.R)
-    fun onInlineSuggestionsResponse(response: InlineSuggestionsResponse): Boolean {
-        if(latinIME.getSetting(ActionBarDisplayedSetting) == false) return false
-        if(latinIME.getSetting(InlineAutofillSetting) == false) return false
-
-        if(response.inlineSuggestions.isNotEmpty() == true){
-            currentNotice.value?.onDismiss(latinIME, true)
-        }
-
-        inlineSuggestions.value = response.inlineSuggestions.map {
-            latinIME.inflateInlineSuggestion(it)
-        }
-
-        return true
-    }
-
-    fun triggerActionInternalFromIme(id: Int, alt: Boolean) {
-        val action = AllActions.getOrNull(id) ?: throw IllegalArgumentException("No such action with ID $id")
-
-        if(alt) {
-            onActionAltActivatedInternal(action)
-        } else {
-            if (currWindowAction.value != null && action.windowImpl != null) {
-                closeActionWindow()
-            }
-
-            onActionActivatedInternal(action)
-        }
-    }
-
-    fun requestForgetWord(suggestedWordInfo: SuggestedWords.SuggestedWordInfo) {
-        keyboardManagerForAction.requestDialog(
-            latinIME.getString(R.string.keyboard_suggest_blacklist_body, suggestedWordInfo.mWord),
-            listOf(
-                DialogRequestItem(latinIME.getString(R.string.cancel)) { },
-                DialogRequestItem(latinIME.getString(R.string.keyboard_suggest_add_word_to_blacklist)) {
-                    latinIME.blacklistWord(suggestedWordInfo)
-                },
-            ) + if(suggestedWordInfo.mKindAndFlags == SuggestedWordInfo.KIND_EMOJI_SUGGESTION) {
-                listOf(
-                    DialogRequestItem(latinIME.getString(R.string.keyboard_suggest_disable_emojis)) {
-                        runBlocking { latinIME.setSetting(SHOW_EMOJI_SUGGESTIONS, false) }
-                        latinIME.blacklistWord(null)
+                SettingSlider(
+                    title = stringResource(R.string.typing_settings_keypress_sound_volume),
+                    setting = keySoundVolumeSetting,
+                    range = 0.0f .. 1.0f,
+                    hardRange = 0.0f .. 1.0f,
+                    transform = {
+                        value.floatValue = it
+                        if(it == 0.0f) {
+                            -1.0f
+                        } else {
+                            it
+                        }
+                    },
+                    indicator = {
+                        if(it <= 0.0f) {
+                            resources.getString(R.string.typing_settings_keypress_sound_volume_default)
+                        } else {
+                            "${(it * 100.0f).roundToInt()}%"
+                        }
                     }
                 )
-            } else {
-                listOf()
             }
-        ) { }
+        ),
+    )
+)
 
-        val v = latinIME.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator?
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            v!!.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+@Preview(showBackground = true)
+@Composable
+fun KeyboardAndTypingScreen(navController: NavHostController = rememberNavController()) {
+    ScrollableList {
+        if(IMESettingsMenu.visibilityCheck!!()) {
+            ScreenTitle("", showBack = true, navController)
+            IMESettingsMenu.render(showBack = false)
+            ScreenTitle(
+                stringResource(
+                    KeyboardSettingsMenu.title
+                ),
+                showBack = false,
+                navController
+            )
         } else {
-            v!!.vibrate(50)
-        }
-    }
-
-    private fun initKeyboardLoadActions() {
-        if(!latinIME.isDirectBootUnlocked) return
-        AllActions.forEach { action ->
-            if (action.persistentStateInitialization == PersistentStateInitialization.OnKeyboardLoad) {
-                persistentStates[action] = persistentStates[action] ?:
-                    action.persistentState?.let { it(keyboardManagerForAction) }
-            }
-        }
-    }
-
-    fun onCreate() {
-        initKeyboardLoadActions()
-
-        isActionsExpanded.value = latinIME.getSettingBlocking(ActionBarExpanded)
-
-        latinIME.lifecycleScope.launch(Dispatchers.Main) {
-            WindowInfoTracker.getOrCreate(latinIME).windowLayoutInfo(latinIME).collect {
-                foldingOptions.value = FoldingOptions(it.displayFeatures.filterIsInstance<FoldingFeature>().firstOrNull())
-                latinIME.invalidateKeyboard(true)
-            }
+            ScreenTitle(
+                stringResource(
+                    KeyboardSettingsMenu.title
+                ),
+                showBack = true,
+                navController
+            )
         }
 
-        setContent()
+        KeyboardSettingsMenu.render(showBack = false, showTitle = false)
+        TypingSettingsMenu.render(showBack = false)
+
+        BottomSpacer()
     }
-
-    fun onPersistentStatesUnlocked() {
-        initKeyboardLoadActions()
-
-        persistentStates.forEach {
-            latinIME.lifecycleScope.launch {
-                it.value?.onDeviceUnlocked()
-            }
-        }
-    }
-
-    var editorInfo: EditorInfo? = null
-
-
-    // TODO: Move tutorial stuff to a separate class
-
-    val tutorialMode: TutorialMode
-        get() = when {
-            editorInfo?.privateImeOptions?.contains("org.futo.inputmethod.latin.ResizeMode=1") == true ->
-                TutorialMode.ResizerTutorial
-
-            else ->
-                TutorialMode.None
-        }
-
-    val currTutorialMode = mutableStateOf(TutorialMode.None)
-    val tutorialArrowPosition: MutableState<LayoutCoordinates?> = mutableStateOf(null)
-    val tutorialCompleted = mutableStateOf(false)
-
-    @Composable
-    private fun TutorialArrow() = with(LocalDensity.current) {
-        if(currTutorialMode.value == TutorialMode.ResizerTutorial && !tutorialCompleted.value) {
-            tutorialArrowPosition.value?.let { position ->
-                val pos = position.positionInWindow()
-                Icon(
-                    painterResource(R.drawable.pointy_arrow),
-                    contentDescription = null,
-                    tint = LocalKeyboardScheme.current.primary,
-                    modifier = Modifier
-                        .size(128.dp)
-                        .offset {
-                            IntOffset(
-                                pos.x.roundToInt(),
-                                (pos.y - 128.dp.toPx()).roundToInt()
-                            )
-                        }
-                )
-            }
-        }
-    }
-
-    private val quickClipState: MutableState<QuickClipState?> = mutableStateOf(null)
-    fun dismissQuickClips() { quickClipState.value = null }
-    fun inputStarted(editorInfo: EditorInfo?) {
-        try {
-            checkIfDictInstalled()
-        } catch(e: Exception) {
-            e.printStackTrace()
-        }
-        inlineStuffHiddenByTyping.value = false
-        this.editorInfo = editorInfo
-
-        currTutorialMode.value = tutorialMode
-        tutorialCompleted.value = false
-        tutorialArrowPosition.value = null
-
-        if(tutorialMode == TutorialMode.ResizerTutorial) {
-            onActionActivated(KeyboardModeAction)
-        }else if(BugViewerState.isBugViewerPendingOpen) {
-            BugViewerState.clearPendingOpen()
-            onActionActivated(BugViewerAction)
-        }
-
-        quickClipState.value = QuickClip.getCurrentState(latinIME)
-        floatingPreeditEditing.value = false
-    }
-
-    fun onInputFinishing() {
-        closeActionWindow()
-        languageSwitcherDialog?.dismiss()
-        isShowingActionEditor.value = false
-        resizers.hideResizer()
-        inlineSuggestions.value = emptyList()
-        floatingPreeditText.value = ""
-    }
-
-    // Called by InputLogic on any event
-    fun onInputEvent(textBlank: Boolean) {
-        inlineStuffHiddenByTyping.value = textBlank == false
-    }
-
-    fun updateEmojiTranslationsIfNeeded() {
-        if(latinIME.getSetting(SHOW_EMOJI_SUGGESTIONS)
-            && Settings.getInstance().current.needsToLookupSuggestions()
-        ) {
-            prevLocale?.let {
-                PersistentEmojiState.loadTranslationsForLanguage(latinIME, it)
-            }
-        }
-    }
-
-    private var prevLocale: Locale? = null
-    fun updateLocale(locale: Locale): Configuration? {
-        var result: Configuration? = null
-        prevLocale = locale
-        if(UixLocaleFollowsSubtypeLocale) {
-            latinIME.resources.apply {
-                val config = Configuration(configuration)
-                config.setLocale(locale)
-                result = config
-                updateConfiguration(config, displayMetrics)
-            }
-            setContent()
-        }
-
-        updateEmojiTranslationsIfNeeded()
-        checkIfDictInstalled()
-        return result
-    }
-
-    fun updateLocaleOnCfgChanged(): Configuration? {
-        return prevLocale?.let { updateLocale(it) }
-    }
-
-    fun onDestroy() {
-        closeActionWindow()
-        persistentStates.values.filterNotNull().forEach {
-            it.close()
-        }
-        persistentStates.clear()
-    }
-
-    private fun checkIfDictInstalled() {
-        val check = MissingDictionaryHelper.checkIfDictInstalled(latinIME)
-        when(check) {
-            MissingDictionaryHelper.DictCheckResult.CheckFailed -> { }
-            MissingDictionaryHelper.DictCheckResult.DontShowDictNotice -> {
-                // Hide any existing one, e.g. if user just installed a dict or switched to a language
-                // with a dict.
-                if(currentNotice.value is MissingDictionaryHelper.NoDictionaryNotice) {
-                    currentNotice.value = null
-                }
-            }
-            is MissingDictionaryHelper.DictCheckResult.ShowDictNotice -> {
-                numSuggestionsSinceNotice = 0
-                currentNotice.value = MissingDictionaryHelper.NoDictionaryNotice(
-                    check.dismissalSetting,
-                    check.locale,
-                    latinIME.getString(R.string.keyboard_actionbar_no_dictionary_installed_notice)
-                ) { currentNotice.value = null }
-            }
-        }
-    }
-
-    fun setPreedit(preedit: FloatingPreEdit?) {
-        floatingPreedit.value = preedit
-    }
-
-    val extraTopTouchHeight: Int
-        get() = if(floatingPreeditShown) floatingPreeditHeight.value else 0
 }
-
-
