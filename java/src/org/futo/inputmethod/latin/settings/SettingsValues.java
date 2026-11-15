@@ -101,6 +101,7 @@ public class SettingsValues {
     public final boolean mUseLocalNumbers;
     public final boolean mIsArrowRowEnabled;
     public final boolean mIsUsingAlternativePeriodKey;
+    public final float mSpacebarWidthScale;
     public final boolean mUseDictionaryKeyBoosting;
     public final int mScreenMetrics;
 
@@ -183,6 +184,7 @@ public class SettingsValues {
         mUseLocalNumbers = !prefs.getBoolean(Settings.PREF_USE_WESTERN_NUMERALS, false);
         mIsArrowRowEnabled = prefs.getBoolean(Settings.PREF_ENABLE_ARROW_ROW, false);
         mIsUsingAlternativePeriodKey = prefs.getBoolean(Settings.PREF_ENABLE_ALT_PERIOD_KEY, false) && SettingsValues.altPeriodKeyAllowedForLocale(mLocale);
+        mSpacebarWidthScale = prefs.getFloat(Settings.PREF_SPACEBAR_WIDTH_SCALE, 1.0f);
         mUseDictionaryKeyBoosting = prefs.getBoolean(Settings.PREF_USE_DICT_KEY_BOOSTING, true);
         mUseContactsDict = prefs.getBoolean(Settings.PREF_KEY_USE_CONTACTS_DICT, true);
         mUsePersonalizedDicts = prefs.getBoolean(Settings.PREF_KEY_USE_PERSONALIZED_DICTS, true);
@@ -570,6 +572,8 @@ public class SettingsValues {
         sb.append("" + mIsArrowRowEnabled);
         sb.append("\n   mIsUsingAlternativePeriodKey = ");
         sb.append("" + mIsUsingAlternativePeriodKey);
+        sb.append("\n   mSpacebarWidthScale = ");
+        sb.append("" + mSpacebarWidthScale);
         sb.append("\n   mUseDictionaryKeyBoosting = ");
         sb.append("" + mUseDictionaryKeyBoosting);
         sb.append("\n   mScreenMetrics = ");
