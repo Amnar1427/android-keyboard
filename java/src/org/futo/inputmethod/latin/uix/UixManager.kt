@@ -1306,8 +1306,8 @@ class UixManager(private val latinIME: LatinIME) {
                 .background(bgColor)
                 .border(1.5.dp, borderColor, RoundedCornerShape(100))
                 .pointerInput(Unit) {
-                    androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress(
-                        onDragStart = {
+                    detectDragGestures(
+                        onDragStart = { _ ->
                             isExpanded.value = true
                             dragOffset.value = Offset.Zero
                             accumX.value = 0f
@@ -1322,9 +1322,11 @@ class UixManager(private val latinIME: LatinIME) {
                             isExpanded.value = false
                             dragOffset.value = Offset.Zero
                         },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            dragOffset.value += dragAmount
+                        onDrag = { _, dragAmount ->
+                            dragOffset.value = Offset(
+                                dragOffset.value.x + dragAmount.x,
+                                dragOffset.value.y + dragAmount.y
+                            )
                             accumX.value += dragAmount.x
                             accumY.value += dragAmount.y
 
