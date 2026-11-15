@@ -63,8 +63,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.border
-import androidx.compose.ui.zIndex
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -134,6 +132,8 @@ import org.futo.inputmethod.latin.uix.actions.keyCodeAlt
 import org.futo.inputmethod.latin.uix.resizing.KeyboardResizers
 import org.futo.inputmethod.latin.uix.settings.DataStoreCacheProvider
 import org.futo.inputmethod.latin.uix.settings.pages.ActionBarDisplayedSetting
+import androidx.compose.foundation.border
+import androidx.compose.ui.zIndex
 import org.futo.inputmethod.latin.uix.settings.pages.InlineAutofillSetting
 import org.futo.inputmethod.latin.uix.settings.pages.centerCursorTrackpadSetting
 import org.futo.inputmethod.latin.uix.settings.useDataStore
@@ -1279,19 +1279,21 @@ class UixManager(private val latinIME: LatinIME) {
         val accumY = remember { mutableStateOf(0f) }
         val view = LocalView.current
         val density = LocalDensity.current.density
-        val stepPxX = 12f * density
-        val stepPxY = 24f * density
+        val stepPxX = 11f * density
+        val stepPxY = 22f * density
 
-        val currentSize = if (isExpanded.value) 58.dp else 22.dp
+        val currentSize = if (isExpanded.value) 62.dp else 26.dp
         val bgColor = if (isExpanded.value) {
-            LocalKeyboardScheme.current.primary.copy(alpha = 0.88f)
+            LocalKeyboardScheme.current.primary.copy(alpha = 0.92f)
         } else {
-            LocalKeyboardScheme.current.onKeyboardContainer.copy(alpha = 0.35f)
+            LocalKeyboardScheme.current.primary.copy(alpha = 0.55f)
         }
+        val borderColor = LocalKeyboardScheme.current.onKeyboardContainer.copy(alpha = 0.7f)
 
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
+                .zIndex(25f)
                 .align(Alignment.Center)
                 .offset {
                     IntOffset(
@@ -1302,6 +1304,7 @@ class UixManager(private val latinIME: LatinIME) {
                 .size(currentSize)
                 .clip(RoundedCornerShape(100))
                 .background(bgColor)
+                .border(1.5.dp, borderColor, RoundedCornerShape(100))
                 .pointerInput(Unit) {
                     androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress(
                         onDragStart = {
@@ -1348,14 +1351,12 @@ class UixManager(private val latinIME: LatinIME) {
                     )
                 }
         ) {
-            if (isExpanded.value) {
-                Icon(
-                    painter = painterResource(id = R.drawable.direction_arrows),
-                    contentDescription = null,
-                    tint = LocalKeyboardScheme.current.onPrimary,
-                    modifier = Modifier.size(28.dp)
-                )
-            }
+            Icon(
+                painter = painterResource(id = R.drawable.direction_arrows),
+                contentDescription = null,
+                tint = if (isExpanded.value) LocalKeyboardScheme.current.onPrimary else LocalKeyboardScheme.current.onKeyboardContainer,
+                modifier = Modifier.size(if (isExpanded.value) 30.dp else 14.dp)
+            )
         }
     }
 
@@ -1396,7 +1397,7 @@ class UixManager(private val latinIME: LatinIME) {
 
                     val kbHeight = remember { mutableIntStateOf(latinIME.size.value!!.height) }
                     val keyboardViewOffset = remember(needToUseExpandableSuggestionUi) { mutableIntStateOf(0) }
-                    Box(Modifier.let {
+                    Box(Modifier.fillMaxWidth().let {
                         if(needToUseExpandableSuggestionUi) {
                             it.height(
                                 with(LocalDensity.current) { kbHeight.intValue.toDp() }
@@ -1404,7 +1405,7 @@ class UixManager(private val latinIME: LatinIME) {
                                         + gap
                             )
                         } else {
-                            it
+                            it.height(with(LocalDensity.current) { kbHeight.intValue.toDp() })
                         }
                     }) {
                         if(needToUseExpandableSuggestionUi) {
