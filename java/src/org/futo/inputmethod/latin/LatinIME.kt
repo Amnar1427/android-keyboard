@@ -955,4 +955,8 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
             else ->
                 KeyboardSizeSettingKind.Portrait
         }
+
+    fun trySwitchToShortcutIMEorInternal() {
+        RichInputMethodManager.getInstance().switchToShortcutIme(this)
+    }
 }
