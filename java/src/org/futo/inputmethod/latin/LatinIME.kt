@@ -492,6 +492,7 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
         Settings.getInstance().settingsChangedListeners.add { oldSettings, newSettings ->
             val differs = (oldSettings.mActionKeyId != newSettings.mActionKeyId)
                     || (oldSettings.mShowsActionKey != newSettings.mShowsActionKey)
+                    || (oldSettings.mSpacebarWidthScale != newSettings.mSpacebarWidthScale)
 
             if (differs) {
                 invalidateKeyboard(refreshSettings = true)
@@ -938,13 +939,6 @@ class LatinIME : InputMethodServiceCompose(), LatinIMELegacy.SuggestionStripCont
         CanThrowIfDebug = true
 
         // TODO: Spell checker service
-    }
-
-    /// Switch to voice IME or to internal one if it's no longer present.
-    fun trySwitchToShortcutIMEorInternal() {
-        if(!latinIMELegacy.mRichImm.switchToShortcutIme(this)) {
-            uixManager.activateInternalVoiceIME()
-        }
     }
 
     override val foldState: FoldingOptions
