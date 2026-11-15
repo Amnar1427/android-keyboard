@@ -185,7 +185,7 @@ data class LayoutEngine(
         1.0f
     }
 
-    private val minimumBottomFunctionalKeyWidth = (layoutWidth * (keyboard.minimumBottomRowFunctionalKeyWidth / spacebarScale).coerceAtLeast(0.08f))
+    private val minimumBottomFunctionalKeyWidth = (layoutWidth * (keyboard.minimumBottomRowFunctionalKeyWidth / spacebarScale).coerceAtLeast(0.04f))
 
     private val regularKeyWidth = computeRegularKeyWidth()
     private val unsplitRegularKeyWidth = computeRegularKeyWidth(unsplitLayoutWidth)
@@ -195,7 +195,7 @@ data class LayoutEngine(
     private val maxFunctionalKeyWidth = (layoutWidth * maxOf(0.15f,
         keyboard.overrideWidths[KeyWidth.FunctionalKey] ?: 0.15f))
 
-    private val bottomRegularKeyWidth = (0.1f / spacebarScale).coerceAtLeast(0.05f) * layoutWidth
+    private val bottomRegularKeyWidth = (0.1f / spacebarScale).coerceAtLeast(0.03f) * layoutWidth
 
 
     private fun computeRegularKeyWidth(layoutWidth: Int = this.layoutWidth): Float {
