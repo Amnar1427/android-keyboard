@@ -1,0 +1,85 @@
+name: Build Custom FUTO Keyboard APK
+
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 2. Fetch External Submodules
+        run: |
+          git config --global protocol.file.allow always
+          if [ -z "$(ls -A libs 2>/dev/null)" ]; then
+            rm -rf libs
+            git clone --depth 1 https://gitlab.futo.org/keyboard/android-libs.git libs
+          fi
+          if [ -z "$(ls -A voiceinput-shared/src/main/ml 2>/dev/null)" ]; then
+            rm -rf voiceinput-shared/src/main/ml
+            git clone --depth 1 https://gitlab.futo.org/keyboard/voice-input-models.git voiceinput-shared/src/main/ml
+          fi
+          if [ -z "$(ls -A java/assets/layouts 2>/dev/null)" ]; then
+            rm -rf java/assets/layouts
+            git clone --depth 1 https://github.com/futo-org/futo-keyboard-layouts.git java/assets/layouts
+          fi
+          if [ -z "$(ls -A translations 2>/dev/null)" ]; then
+            rm -rf translations
+            git clone --depth 1 https://gitlab.futo.org/keyboard/keyboard-translations-public.git translations
+          fi
+          if [ -z "$(ls -A java/assets/themes 2>/dev/null)" ]; then
+            rm -rf java/assets/themes
+            git clone --depth 1 https://gitlab.futo.org/keyboard/seasonal-themes.git java/assets/themes
+          fi
+          if [ -z "$(ls -A java/res-large 2>/dev/null)" ]; then
+            rm -rf java/res-large
+            git clone --depth 1 https://gitlab.futo.org/keyboard/keyboard-large-resources.git java/res-large
+          fi
+          if [ -z "$(ls -A java/assets/futo-swipe 2>/dev/null)" ]; then
+            rm -rf java/assets/futo-swipe
+            git clone --depth 1 https://huggingface.co/futo-org/futo-swipe java/assets/futo-swipe
+          fi
+
+      - name: 3. Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: 4. Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python dependencies
+        run: pip install requests
+
+      - name: 5. Install Android SDK & NDK (28.2.13676358)
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - name: 6. Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.14.3'
+
+      - name: 7. Build Signed APK (Unstable Release)
+        env:
+          VERSION_CODE: "10130"
+          VERSION_NAME: "0.1.30-custom-spacebar"
+          BRANCH_NAME: "custom"
+        run: |
+          gradle assembleUnstableRelease --stacktrace
+
+      - name: 8. Upload APK as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTO-Keyboard-Custom-Spacebar-APK
+          path: build/outputs/apk/unstable/release/*.apk
