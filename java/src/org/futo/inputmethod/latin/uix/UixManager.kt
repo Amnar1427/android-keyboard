@@ -107,7 +107,6 @@ import org.futo.inputmethod.engine.ExpandableSuggestionBarConfiguration
 import org.futo.inputmethod.engine.IMEInterface
 import org.futo.inputmethod.engine.NonExpandableSuggestionBar
 import org.futo.inputmethod.event.Event
-import org.futo.inputmethod.latin.ATLCompat
 import org.futo.inputmethod.latin.AudioAndHapticFeedbackManager
 import org.futo.inputmethod.latin.BuildConfig
 import org.futo.inputmethod.latin.FoldingOptions
@@ -134,6 +133,7 @@ import org.futo.inputmethod.latin.uix.resizing.KeyboardResizers
 import org.futo.inputmethod.latin.uix.settings.DataStoreCacheProvider
 import org.futo.inputmethod.latin.uix.settings.pages.ActionBarDisplayedSetting
 import org.futo.inputmethod.latin.uix.settings.pages.InlineAutofillSetting
+import org.futo.inputmethod.latin.uix.settings.pages.centerCursorTrackpadSetting
 import org.futo.inputmethod.latin.uix.settings.useDataStore
 import org.futo.inputmethod.latin.uix.theme.KeyboardSurfaceShaderBackground
 import org.futo.inputmethod.latin.uix.theme.Typography
@@ -619,9 +619,6 @@ class UixManager(private val latinIME: LatinIME) {
     private fun toggleActionsExpanded() {
         isActionsExpanded.value = !isActionsExpanded.value
         latinIME.deferSetSetting(latinIME, ActionBarExpanded, isActionsExpanded.value)
-
-        // invalidation strangeness (needs fixing)
-        if(ATLCompat.IsATL) latinIME.invalidateKeyboard(true)
     }
 
 
@@ -652,13 +649,12 @@ class UixManager(private val latinIME: LatinIME) {
 
     val isMainKeyboardHidden get() = mainKeyboardHidden.value
 
-    private fun onActionActivatedInternal(rawAction: Action, skipOverride: Boolean = false) {
+    private fun onActionActivatedInternal(rawAction: Action) {
         resizers.hideResizer()
 
-        val action = if(skipOverride)
-            rawAction
-        else
+        val action = runBlocking {
             ActionRegistry.getActionOverride(latinIME, rawAction)
+        }
 
         if (action.windowImpl != null) {
             enterActionWindowView(action)
@@ -669,13 +665,11 @@ class UixManager(private val latinIME: LatinIME) {
         }
     }
 
-    /// public function to skip action override for voice input
-    fun activateInternalVoiceIME() {
-        onActionActivatedInternal(org.futo.inputmethod.latin.uix.actions.VoiceInputAction, skipOverride = true)
-    }
-
     private fun onActionAltActivatedInternal(rawAction: Action) {
-        val action = ActionRegistry.getActionOverride(latinIME, rawAction)
+        val action = runBlocking {
+            ActionRegistry.getActionOverride(latinIME, rawAction)
+        }
+
         action.altPressImpl?.invoke(keyboardManagerForAction, persistentStates[action])
     }
 
@@ -1273,6 +1267,97 @@ class UixManager(private val latinIME: LatinIME) {
     }
 
     @Composable
+    private fun BoxScope.CenterCursorTrackpad() {
+        val enabled = useDataStore(centerCursorTrackpadSetting)
+        if (!enabled.value || mainKeyboardHidden.value || currWindowActionWindow.value != null) return
+
+        val isExpanded = remember { mutableStateOf(false) }
+        val dragOffset = remember { mutableStateOf(Offset.Zero) }
+        val accumX = remember { mutableStateOf(0f) }
+        val accumY = remember { mutableStateOf(0f) }
+        val view = LocalView.current
+        val density = LocalDensity.current.density
+        val stepPxX = 12f * density
+        val stepPxY = 24f * density
+
+        val currentSize = if (isExpanded.value) 58.dp else 22.dp
+        val bgColor = if (isExpanded.value) {
+            LocalKeyboardScheme.current.primary.copy(alpha = 0.88f)
+        } else {
+            LocalKeyboardScheme.current.onKeyboardContainer.copy(alpha = 0.35f)
+        }
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .offset {
+                    IntOffset(
+                        (dragOffset.value.x * 0.35f).roundToInt(),
+                        (dragOffset.value.y * 0.35f).roundToInt()
+                    )
+                }
+                .size(currentSize)
+                .clip(RoundedCornerShape(100))
+                .background(bgColor)
+                .pointerInput(Unit) {
+                    androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress(
+                        onDragStart = {
+                            isExpanded.value = true
+                            dragOffset.value = Offset.Zero
+                            accumX.value = 0f
+                            accumY.value = 0f
+                            keyboardManagerForAction.performHapticAndAudioFeedback(Constants.CODE_SPACE, view)
+                        },
+                        onDragEnd = {
+                            isExpanded.value = false
+                            dragOffset.value = Offset.Zero
+                        },
+                        onDragCancel = {
+                            isExpanded.value = false
+                            dragOffset.value = Offset.Zero
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            dragOffset.value += dragAmount
+                            accumX.value += dragAmount.x
+                            accumY.value += dragAmount.y
+
+                            val stepsX = (accumX.value / stepPxX).toInt()
+                            if (stepsX != 0) {
+                                accumX.value -= stepsX * stepPxX
+                                if (stepsX > 0) {
+                                    for (i in 0 until stepsX) keyboardManagerForAction.cursorRight(1, false, false)
+                                } else {
+                                    for (i in 0 until -stepsX) keyboardManagerForAction.cursorLeft(1, false, false)
+                                }
+                            }
+
+                            val stepsY = (accumY.value / stepPxY).toInt()
+                            if (stepsY != 0) {
+                                accumY.value -= stepsY * stepPxY
+                                val keyCode = if (stepsY > 0) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
+                                val count = kotlin.math.abs(stepsY)
+                                for (i in 0 until count) {
+                                    keyboardManagerForAction.sendKeyEvent(keyCode, 0)
+                                }
+                            }
+                        }
+                    )
+                }
+        ) {
+            if (isExpanded.value) {
+                Icon(
+                    painter = painterResource(id = R.drawable.direction_arrows),
+                    contentDescription = null,
+                    tint = LocalKeyboardScheme.current.onPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+    }
+
+    @Composable
     fun Content() {
         ProvidersAndWrapper {
             InputDarkener(isInputOverridden.value || isShowingActionEditor.value) {
@@ -1346,6 +1431,8 @@ class UixManager(private val latinIME: LatinIME) {
                             }
                             .absoluteOffset { IntOffset(0, keyboardViewOffset.intValue) },
                             hidden = mainKeyboardHidden.value)
+
+                        CenterCursorTrackpad()
                     }
 
                     if(latinIME.size.value !is FloatingKeyboardSize) {
