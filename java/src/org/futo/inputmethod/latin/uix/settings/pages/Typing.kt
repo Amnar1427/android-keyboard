@@ -155,6 +155,11 @@ val InlineAutofillSetting = SettingsKey(
     true
 )
 
+val spacebarWidthScaleSetting = SettingsKey(
+    floatPreferencesKey("spacebar_width_scale"),
+    1.0f
+)
+
 val ResizeMenuLite = UserSettingsMenu(
     title = R.string.size_settings_title,
     navPath = "resize", registerNavPath = false,
@@ -848,6 +853,21 @@ val KeyboardSettingsMenu = UserSettingsMenu(
         userSettingToggleDataStore(
             title = R.string.keyboard_settings_hide_when_hardware_keyboard_is_connected,
             setting = HideKeyboardWhenHardKeyboardConnected
+        ),
+        UserSetting(
+            name = R.string.morekey_settings_spacebar_title,
+            component = {
+                SyncDataStoreToPreferencesFloat(spacebarWidthScaleSetting, Settings.PREF_SPACEBAR_WIDTH_SCALE)
+
+                SettingSlider(
+                    title = "عرض زر المسافة (Spacebar Width)",
+                    setting = spacebarWidthScaleSetting,
+                    range = 0.8f .. 1.6f,
+                    hardRange = 0.5f .. 2.0f,
+                    transform = { (it * 100.0f).roundToInt() / 100.0f },
+                    indicator = { "${(it * 100.0f).roundToInt()}%" }
+                )
+            }
         )
     )
 )
