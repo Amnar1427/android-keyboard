@@ -9,6 +9,7 @@ import org.futo.inputmethod.keyboard.internal.KeyboardLayoutElement
 import org.futo.inputmethod.keyboard.internal.KeyboardParams
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.common.Constants
+import org.futo.inputmethod.latin.settings.Settings
 import org.futo.inputmethod.latin.uix.DynamicThemeProvider
 import org.futo.inputmethod.latin.uix.actions.throwIfDebug
 import kotlin.math.floor
@@ -178,7 +179,13 @@ data class LayoutEngine(
         layoutWidth
     }
 
-    private val minimumBottomFunctionalKeyWidth = (layoutWidth * keyboard.minimumBottomRowFunctionalKeyWidth)
+    private val spacebarScale = try {
+        Settings.getInstance().current?.mSpacebarWidthScale ?: 1.0f
+    } catch (_: Exception) {
+        1.0f
+    }
+
+    private val minimumBottomFunctionalKeyWidth = (layoutWidth * (keyboard.minimumBottomRowFunctionalKeyWidth / spacebarScale).coerceAtLeast(0.08f))
 
     private val regularKeyWidth = computeRegularKeyWidth()
     private val unsplitRegularKeyWidth = computeRegularKeyWidth(unsplitLayoutWidth)
@@ -188,7 +195,7 @@ data class LayoutEngine(
     private val maxFunctionalKeyWidth = (layoutWidth * maxOf(0.15f,
         keyboard.overrideWidths[KeyWidth.FunctionalKey] ?: 0.15f))
 
-    private val bottomRegularKeyWidth = 0.1f * layoutWidth
+    private val bottomRegularKeyWidth = (0.1f / spacebarScale).coerceAtLeast(0.05f) * layoutWidth
 
 
     private fun computeRegularKeyWidth(layoutWidth: Int = this.layoutWidth): Float {
@@ -456,7 +463,7 @@ data class LayoutEngine(
                     regularKeyWidth = rowRegularKeyWidths[i],
                     layoutWidth = rowLayoutWidths[i],
                     functionalWidth = if (rows[i].isBottomRow && keyboard.bottomRowWidthMode.separateFunctional) {
-                        maxOf(minimumBottomFunctionalKeyWidth, functionalWidth)
+                        maxOf(minimumBottomFunctionalKeyWidth, functionalWidth / spacebarScale)
                     } else {
                         functionalWidth
                     }
