@@ -113,8 +113,8 @@ data class LayoutEngine(
     val params: KeyboardParams,
     val layoutParams: LayoutParams
 ) {
-    val horizontalGap = layoutParams.gap
-    val verticalGap = layoutParams.gap * 2
+    val horizontalGap = layoutParams.gap * 1.65f
+    val verticalGap = layoutParams.gap * 2.5f
 
     val effectiveRows = keyboard.getEffectiveRows(params.mId.mNumberRowMode)
 
@@ -699,10 +699,10 @@ data class LayoutEngine(
             // taps A       taps L
             // Also add bottom padding for spacebar
             hitBox = Rect(
-                x - (leftGap?.widthPx?.roundToInt() ?: 0),
-                y,
-                x + width + (rightGap?.widthPx?.roundToInt() ?: 0),
-                y + height + extendedBottomPadding
+                if (leftGap != null) x - leftGap.widthPx.roundToInt() else x + (horizontalGapPx * 0.25f).roundToInt(),
+                y + (verticalGapPx * 0.20f).roundToInt(),
+                if (rightGap != null) x + width + rightGap.widthPx.roundToInt() else x + width - (horizontalGapPx * 0.25f).roundToInt(),
+                if (extendedBottomPadding > 0) y + height + extendedBottomPadding else y + height - (verticalGapPx * 0.20f).roundToInt()
             ),
 
             // Add flick keys
